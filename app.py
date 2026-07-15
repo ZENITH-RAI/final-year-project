@@ -12,11 +12,15 @@ from flask_login import LoginManager, current_user, login_required, login_user, 
 from flask_migrate import Migrate
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from threading import Lock                          # FIXED: import Lock for thread safety
 
 # Import the database instance from the new extensions file
 from extensions import db
+def get_nepal_time():
+    """Returns the current naive datetime converted to Nepal Standard Time (UTC+5:45)."""
+    nepal_tz = timezone(timedelta(hours=5, minutes=45))
+    return datetime.now(nepal_tz).replace(tzinfo=None)
 
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-development-secret")
@@ -405,14 +409,14 @@ def admin_dashboard():
     total_users = User.query.count()
     total_preds = Estimate.query.count()
     
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    # FIXED: Replaced datetime.utcnow() with Nepali Time midnight configuration
+    today_start = get_nepal_time().replace(hour=0, minute=0, second=0, microsecond=0)
     today_preds = Estimate.query.filter(Estimate.created_at >= today_start).count()
     
     avg_price = db.session.query(func.avg(Estimate.predicted_price)).scalar()
     avg_price = f"NPR {int(avg_price):,}" if avg_price else "NPR 0"
     
     recent_estimates = Estimate.query.order_by(Estimate.created_at.desc()).limit(10).all()
-    
     return render_page('admin.html', 'admin',
                        total_users=total_users,
                        total_preds=total_preds,
@@ -631,7 +635,8 @@ def predict():
                     transmission=user_input['transmission'],
                     predicted_price=price,
                     min_price=min_price,
-                    max_price=max_price
+                    max_price=max_price,
+                    created_at=get_nepal_time()
                 )
                 db.session.add(estimate_record)
                 db.session.commit()
