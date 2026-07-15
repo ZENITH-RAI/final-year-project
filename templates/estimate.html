@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Price estimator — AutoValue{% endblock %}
+{% block description %}Enter your used car details and get a price estimate. Search brand and model as you type.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .results-section { margin-top: 4rem; margin-bottom: 2rem; border-top: 1px solid #eaeaea; padding-top: 2rem; }
+  .results-grid { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 3rem; margin-top: 1.5rem; }
+  .results-col { flex: 1 1 calc(33.333% - 1.5rem); min-width: 250px; }
+  
+  .price-card { background: #f9fafb; border-radius: 8px; padding: 1.5rem; text-align: center; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .price-card.primary { background: #0056b3; border-color: #004494; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  .price-card-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem; color: #6b7280; }
+  .price-card.primary .price-card-title { color: #93c5fd; }
+  .price-card-value { font-size: 1.5rem; font-weight: 700; margin: 0; color: #111827; }
+  .price-card.primary .price-card-value { color: #ffffff; font-size: 1.75rem; }
+  
+  .similar-car-card { border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; background: #ffffff; height: 100%; display: flex; flex-direction: column; }
+  .similar-car-header { background: #f3f4f6; padding: 1rem; border-bottom: 1px solid #d1d5db; font-weight: 600; color: #111827; }
+  .similar-car-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; display: flex; flex-direction: column; }
+  .similar-car-list li { padding: 0.75rem 1rem; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; }
+  .similar-car-list li:last-child { border-bottom: none; background: #f8fafc; margin-top: auto; border-top: 1px solid #e2e8f0; }
+  
+  .alert-info { background: #eff6ff; color: #1e3a8a; padding: 1rem; border-radius: 6px; border: 1px solid #bfdbfe; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <header class="page-head">
+    <h1>Price estimator</h1>
+  </header>
+
+  <div class="estimator">
+    <div class="form-panel">
+      <h2>Vehicle details</h2>
+      <p class="form-panel__hint">* All fields below are required.</p>
+      <form id="estimate-form" action="{{ url_for('predict') }}" method="post" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="form-grid">
+          <div class="field" data-field="brand">
+            <label for="brand">Brand</label>
+            <div class="combo">
+              <input
+                type="text"
+                id="brand"
+                name="brand"
+                value="{{ form_data.get('brand', '') }}"
+                required
+                autocomplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="brand-listbox"
+                aria-expanded="false"
+                placeholder="Type to search brands"
+              />
+              <ul id="brand-listbox" class="combo__list" role="listbox" hidden></ul>
+            </div>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="model">
+            <label for="model">Model</label>
+            <div class="combo">
+              <input
+                type="text"
+                id="model"
+                name="model"
+                value="{{ form_data.get('model', '') }}"
+                required
+                autocomplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="model-listbox"
+                aria-expanded="false"
+                placeholder="Enter your car model"
+              />
+              <ul id="model-listbox" class="combo__list" role="listbox" hidden></ul>
+            </div>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="year">
+            <label for="year">Manufacturing year</label>
+            <input
+              type="number"
+              id="year"
+              name="year"
+              value="{{ form_data.get('year', '') }}"
+              placeholder="Eg.: 2019"
+              min="1980"
+              max="2030"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="km_driven">
+            <label for="km_driven">Kilometers driven</label>
+            <input
+              type="number"
+              id="km_driven"
+              name="km_driven"
+              value="{{ form_data.get('km_driven', '') }}"
+              placeholder="Eg.: 10000"
+              min="0"
+              step="1"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="fuel">
+            <label for="fuel">Fuel type</label>
+            <select id="fuel" name="fuel">
+              <option value="" {% if form_data.get('fuel', '') == '' %}selected{% endif %}>Select the Fuel type</option>
+              <option value="CNG" {% if form_data.get('fuel') == 'CNG' %}selected{% endif %}>CNG</option>
+              <option value="Petrol" {% if form_data.get('fuel') == 'Petrol' %}selected{% endif %}>Petrol</option>
+              <option value="Diesel" {% if form_data.get('fuel') == 'Diesel' %}selected{% endif %}>Diesel</option>
+              <option value="LPG" {% if form_data.get('fuel') == 'LPG' %}selected{% endif %}>LPG</option>
+            </select>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="transmission">
+            <label for="transmission">Transmission</label>
+            <select id="transmission" name="transmission">
+              <option value="" {% if form_data.get('transmission', '') == '' %}selected{% endif %}>Select the Transmission type</option>
+              <option value="Manual" {% if form_data.get('transmission') == 'Manual' %}selected{% endif %}>Manual</option>
+              <option value="Automatic" {% if form_data.get('transmission') == 'Automatic' %}selected{% endif %}>Automatic</option>
+            </select>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="seller_type">
+            <label for="seller_type">Seller type</label>
+            <select id="seller_type" name="seller_type">
+              <option value="" {% if form_data.get('seller_type', '') == '' %}selected{% endif %}>Select Seller type</option>
+              <option value="Individual" {% if form_data.get('seller_type') == 'Individual' %}selected{% endif %}>Individual</option>
+              <option value="Dealer" {% if form_data.get('seller_type') == 'Dealer' %}selected{% endif %}>Dealer</option>
+              <option value="Trustmark Dealer" {% if form_data.get('seller_type') == 'Trustmark Dealer' %}selected{% endif %}>Trustmark Dealer</option>
+            </select>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="owner">
+            <label for="owner">Owner</label>
+            <select id="owner" name="owner">
+              <option value="" {% if form_data.get('owner', '') == '' %}selected{% endif %}>Select Owner type</option>
+              <option value="First Owner" {% if form_data.get('owner') == 'First Owner' %}selected{% endif %}>First Owner</option>
+              <option value="Second Owner" {% if form_data.get('owner', 'Second Owner') == 'Second Owner' %}selected{% endif %}>Second Owner</option>
+              <option value="Third Owner" {% if form_data.get('owner') == 'Third Owner' %}selected{% endif %}>Third Owner</option>
+              <option value="Fourth &amp; Above Owner" {% if form_data.get('owner') == 'Fourth & Above Owner' %}selected{% endif %}>Fourth &amp; Above Owner</option>
+            </select>
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="mileage">
+            <label for="mileage">Mileage (kmpl)</label>
+            <input
+              type="number"
+              id="mileage"
+              name="mileage"
+              value="{{ form_data.get('mileage', '') }}"
+              placeholder="Eg.: 20.0"
+              min="0.1"
+              step="0.1"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="engine">
+            <label for="engine">Engine (CC)</label>
+            <input
+              type="number"
+              id="engine"
+              name="engine"
+              value="{{ form_data.get('engine', '') }}"
+              placeholder="Eg.: 796"
+              min="1"
+              step="0.1"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="max_power">
+            <label for="max_power">Max power (bhp)</label>
+            <input
+              type="number"
+              id="max_power"
+              name="max_power"
+              value="{{ form_data.get('max_power', '') }}"
+              placeholder="Eg.: 40.3"
+              min="0.1"
+              step="0.1"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+          <div class="field" data-field="seats">
+            <label for="seats">Seats</label>
+            <input
+              type="number"
+              id="seats"
+              name="seats"
+              value="{{ form_data.get('seats', '') }}"
+              placeholder="Eg.: 4"
+              min="2"
+              max="12"
+              step="1"
+              required
+            />
+            <span class="field__error" role="alert"></span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--block" style="margin-top: 1.5rem">
+          Estimate fair value
+        </button>
+      </form>
+    </div>
+
+    <aside class="side-panel" aria-labelledby="result-heading">
+      <div class="result-card">
+        <p id="result-heading" class="result-card__label">Estimated price</p>
+        <div class="result-card__price" data-result-price aria-live="polite">
+          {{ price if price else '—' }}
+        </div>
+        <p class="result-card__note">
+          {% if error %}
+          Could not generate estimate: {{ error }}
+          {% elif save_error %}
+          {{ save_error }}
+          {% elif estimate_saved %}
+          Prediction generated and saved to your estimate history.
+          {% elif price %}
+          Prediction generated from your submitted vehicle details.
+          {% else %}
+          After you submit the form, your estimated price appears here.
+          {% endif %}
+        </p>
+      </div>
+    </aside>
+  </div>
+  
+  {% if price %}
+  <div class="results-section">
+      <h3>Prediction Results</h3>
+      
+      <div class="results-grid">
+          <div class="results-col">
+              <div class="price-card">
+                  <h5 class="price-card-title">Minimum Estimated</h5>
+                  <p class="price-card-value">{{ min_price }}</p>
+              </div>
+          </div>
+          <div class="results-col">
+              <div class="price-card primary">
+                  <h5 class="price-card-title">Predicted Price</h5>
+                  <p class="price-card-value">{{ price }}</p>
+              </div>
+          </div>
+          <div class="results-col">
+              <div class="price-card">
+                  <h5 class="price-card-title">Maximum Estimated</h5>
+                  <p class="price-card-value">{{ max_price }}</p>
+              </div>
+          </div>
+      </div>
+
+      <h4>Similar Cars from Market</h4>
+      {% if similar_cars %}
+      <div class="results-grid">
+          {% for car in similar_cars %}
+          <div class="results-col">
+              <div class="similar-car-card">
+                  <div class="similar-car-header">
+                      {{ car.name }} ({{ car.year }})
+                  </div>
+                  <ul class="similar-car-list">
+                      <li><strong>Fuel:</strong> {{ car.fuel }}</li>
+                      <li><strong>Trans:</strong> {{ car.transmission }}</li>
+                      <li><strong>Mileage:</strong> {{ car.mileage }} kmpl</li>
+                      <li>
+                          <strong>Actual Price:</strong> {{ car.actual_price }}<br>
+                          <span style="color: #6b7280; font-size: 0.85rem;">Difference: {{ car.diff }}</span>
+                      </li>
+                  </ul>
+              </div>
+          </div>
+          {% endfor %}
+      </div>
+      {% else %}
+      <div class="alert-info">No highly similar cars found in the current dataset.</div>
+      {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.VEHICLE_CATALOG_URL = "{{ url_for('static', filename='data/vehicle_catalog.json') }}";
+</script>
+<script src="{{ url_for('static', filename='js/vehicleAutocomplete.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}AutoValue — Used car price estimates{% endblock %}</title>
+    <meta name="description" content="{% block description %}Get a fair used car value estimate. Pick your vehicle, enter a few details, and see a price guide in minutes.{% endblock %}" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+    
+    {% block extra_css %}{% endblock %}
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    
+    {% include "_site_header.html" %}
+
+    <main id="main">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          &copy;
+          <a href="https://github.com/derAuserwaehlte" target="_blank">Aashish Bista</a> &middot;
+          <a href="https://github.com/BiswasSunar" target="_blank">Bishwash Bishwakarma Paudel</a> &middot;
+          <a href="https://github.com/ZENITH-RAI" target="_blank">Zenith Rai</a>
+          &copy;
+        </p>
+        <p>
+          AutoValue — estimates are guides only, not financial or legal advice.
+        </p>
+      </div>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  </body>
+</html>

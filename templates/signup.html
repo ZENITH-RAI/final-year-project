@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}SignUp — AutoValue{% endblock %}
+{% block description %}Create an AutoValue account to save and review your estimate history.{% endblock %}
+
+{% block content %}
+<div class="wrap auth-page">
+  <section class="auth-shell" aria-labelledby="signup-title">
+    <div class="auth-panel auth-panel--accent">
+      <p class="auth-kicker">Create account</p>
+      <h1 id="signup-title">Create your profile.</h1>
+
+      <form class="auth-form" action="{{ url_for('signup') }}" method="post" data-auth-form="signup" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        {% if error %}
+        <p class="form-message form-message--error" role="alert">{{ error }}</p>
+        {% endif %}
+        <div class="field" data-field="name">
+          <label for="signup-name">Full name</label>
+          <input
+            type="text"
+            id="signup-name"
+            name="name"
+            value="{{ form_data.get('name', '') }}"
+            placeholder="Your name"
+            autocomplete="name"
+            required
+          />
+          <span class="field__error" role="alert"></span>
+        </div>
+        <div class="field" data-field="email">
+          <label for="signup-email">Email</label>
+          <input
+            type="email"
+            id="signup-email"
+            name="email"
+            value="{{ form_data.get('email', '') }}"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+          <span class="field__error" role="alert"></span>
+        </div>
+        <div class="field" data-field="password">
+          <label for="signup-password">Password</label>
+          <input
+            type="password"
+            id="signup-password"
+            name="password"
+            placeholder="Create a password"
+            autocomplete="new-password"
+            required
+          />
+          <span class="field__error" role="alert"></span>
+        </div>
+        <div class="field" data-field="confirm_password">
+          <label for="signup-confirm">Confirm password</label>
+          <input
+            type="password"
+            id="signup-confirm"
+            name="confirm_password"
+            placeholder="Repeat your password"
+            autocomplete="new-password"
+            required
+          />
+          <span class="field__error" role="alert"></span>
+        </div>
+        <div class="auth-form__actions">
+          <button type="submit" class="btn btn--primary">Sign up</button>
+          <a class="btn btn--ghost auth-form__guest" href="{{ url_for('estimate') }}">Use guest estimate</a>
+        </div>
+      </form>
+    </div>
+
+    <aside class="auth-panel">
+      <h2>Account perks</h2>
+      <ul class="auth-short-list">
+        <li>Saved estimate history</li>
+        <li>Quick access from profile</li>
+        <li>Secure password storage</li>
+      </ul>
+    </aside>
+  </section>
+</div>
+{% endblock %}
