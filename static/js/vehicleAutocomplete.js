@@ -3,9 +3,12 @@
 
   var CATALOG_URL =
     window.VEHICLE_CATALOG_URL || "/static/data/vehicle_catalog.json";
+  var DATASET_CATALOG_URL =
+    window.VEHICLE_DATASET_CATALOG_URL || "/api/vehicle-catalog";
   var MAX_SUGGESTIONS = 35;
 
-  var catalog = null;
+  var datasetCatalog = null;
+  var fallbackCatalog = null;
   var catalogError = null;
 
   function normalize(s) {
@@ -61,33 +64,118 @@
       });
   }
 
-  function loadCatalog() {
-    return fetch(CATALOG_URL)
+  function uniqueByNormalized(primary, fallback) {
+    var seen = {};
+    var merged = [];
+    [primary || [], fallback || []].forEach(function (items) {
+      items.forEach(function (item) {
+        var key = normalize(item);
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        merged.push(item);
+      });
+    });
+    return merged;
+  }
+
+  function findBrandKey(catalogData, brand) {
+    if (!catalogData || !catalogData.brands) return "";
+    var target = normalize(brand);
+    for (var i = 0; i < catalogData.brands.length; i++) {
+      if (normalize(catalogData.brands[i]) === target) {
+        return catalogData.brands[i];
+      }
+    }
+    return "";
+  }
+
+  function loadJson(url, errorMessage) {
+    return fetch(url)
       .then(function (r) {
-        if (!r.ok) throw new Error("Could not load vehicle catalog");
+        if (!r.ok) throw new Error(errorMessage);
         return r.json();
-      })
-      .then(function (data) {
-        catalog = data;
-        catalogError = null;
-        return data;
       })
       .catch(function (e) {
         catalogError = e.message || "Load failed";
-        throw e;
+        return null;
       });
   }
 
-  function getBrandList() {
-    if (!catalog || !catalog.brands) return [];
-    return catalog.brands;
+  function loadCatalogs() {
+    return Promise.all([
+      loadJson(DATASET_CATALOG_URL, "Could not load dataset vehicle list"),
+      loadJson(CATALOG_URL, "Could not load fallback vehicle catalog"),
+    ]).then(function (results) {
+      datasetCatalog = results[0];
+      fallbackCatalog = results[1];
+      if (!datasetCatalog && !fallbackCatalog) {
+        throw new Error(catalogError || "Could not load vehicle suggestions");
+      }
+      catalogError = null;
+      return {
+        dataset: datasetCatalog,
+        fallback: fallbackCatalog,
+      };
+    });
   }
 
-  function getModelsForBrand(brand) {
-    if (!catalog || !catalog.modelsByBrand) return [];
-    var list = catalog.modelsByBrand[brand];
+  function getBrandList(catalogData) {
+    if (!catalogData || !catalogData.brands) return [];
+    return catalogData.brands;
+  }
+
+  function getModelsFromCatalog(catalogData, brand) {
+    if (!catalogData || !catalogData.modelsByBrand) return [];
+    var key = findBrandKey(catalogData, brand);
+    if (!key) return [];
+    var list = catalogData.modelsByBrand[key];
     return Array.isArray(list) ? list : [];
   }
+
+  function getBrandSuggestions(query) {
+    var datasetMatches = filterPrefix(getBrandList(datasetCatalog), query);
+    if (normalize(query) && datasetMatches.length > 0) return datasetMatches;
+
+    var fallbackMatches = filterPrefix(getBrandList(fallbackCatalog), query);
+    if (normalize(query) && datasetMatches.length === 0) return fallbackMatches;
+    return uniqueByNormalized(datasetMatches, fallbackMatches);
+  }
+
+  function getModelsForBrand(brand, query) {
+    var datasetModels = getModelsFromCatalog(datasetCatalog, brand);
+    var fallbackModels = getModelsFromCatalog(fallbackCatalog, brand);
+
+    if (!normalize(query)) {
+      return uniqueByNormalized(datasetModels, fallbackModels);
+    }
+
+    var datasetMatches = filterAndSort(datasetModels, query);
+    if (datasetMatches.length > 0) return datasetMatches;
+    return filterAndSort(fallbackModels, query);
+  }
+
+  function findExactItem(items, value) {
+    var target = normalize(value);
+    for (var i = 0; i < items.length; i++) {
+      if (normalize(items[i]) === target) return items[i];
+    }
+    return "";
+  }
+
+  window.vehicleCatalogLookup = {
+    isReady: function () {
+      return Boolean(datasetCatalog || fallbackCatalog);
+    },
+    isValidBrand: function (brand) {
+      return Boolean(
+        findBrandKey(datasetCatalog, brand) || findBrandKey(fallbackCatalog, brand),
+      );
+    },
+    isValidModelForBrand: function (brand, model) {
+      if (!brand || !model) return false;
+      return Boolean(findExactItem(getModelsForBrand(brand, ""), model));
+    },
+  };
 
   function attachCombo(options) {
     var input = options.input;
@@ -227,9 +315,7 @@
       input: brandInput,
       listEl: brandList,
       getItems: function (q) {
-        if (!catalog) return [];
-        var brands = getBrandList();
-        return filterPrefix(brands, q);
+        return getBrandSuggestions(q);
       },
     });
 
@@ -237,12 +323,9 @@
       input: modelInput,
       listEl: modelList,
       getItems: function (q) {
-        if (!catalog) return [];
         var b = brandInput.value.trim();
         if (!b) return null;
-        var models = getModelsForBrand(b);
-        if (!normalize(q)) return models.slice(0, MAX_SUGGESTIONS);
-        return filterAndSort(models, q);
+        return getModelsForBrand(b, q);
       },
     });
 
@@ -250,7 +333,7 @@
       var b = brandInput.value.trim();
       if (b === lastBrand) return;
       lastBrand = b;
-      var models = getModelsForBrand(b);
+      var models = getModelsForBrand(b, "");
       var mv = modelInput.value.trim();
       if (mv && models.indexOf(mv) === -1) {
         modelInput.value = "";
@@ -263,16 +346,21 @@
       window.setTimeout(syncModelAfterBrandChange, 120);
     });
 
-    loadCatalog()
+    loadCatalogs()
       .then(function () {
+        var totalBrands = uniqueByNormalized(
+          getBrandList(datasetCatalog),
+          getBrandList(fallbackCatalog),
+        ).length;
         setStatus(
           catalogStatus,
-          "Vehicle list ready — " + catalog.brandCount + " brands available.",
+          "Vehicle list ready — dataset first, catalog fallback. " + totalBrands + " brands available.",
           false,
         );
         lastBrand = brandInput.value.trim();
         brandCombo.refresh();
         modelCombo.refresh();
+        window.dispatchEvent(new Event("vehiclecatalogready"));
       })
       .catch(function () {
         setStatus(

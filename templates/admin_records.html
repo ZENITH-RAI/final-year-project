@@ -1,0 +1,101 @@
+{% extends "base.html" %} {% block title %}{{ 'Registered Users' if view ==
+'users' else 'All Predictions' }} — AutoValue{% endblock %} {% block extra_css
+%}
+<link
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  rel="stylesheet"
+/>
+{% endblock %} {% block content %}
+<div class="container wrap mt-4 mb-5">
+  <div
+    class="d-flex justify-content-between align-items-center gap-3 flex-wrap mt-4 mb-3"
+  >
+    <div>
+      <h1 class="h2 mb-1">
+        {{ 'Registered users' if view == 'users' else 'All predictions' }}
+      </h1>
+      <p class="text-secondary mb-0">
+        {{ users|length if view == 'users' else estimates|length }} record{{ ''
+        if (users|length if view == 'users' else estimates|length) == 1 else 's'
+        }}
+      </p>
+    </div>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary"
+      >Back to dashboard</a
+    >
+  </div>
+
+  <div class="table-responsive bg-white border rounded-3 shadow-sm p-3">
+    {% if view == 'users' %}
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th>Saved estimates</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.id }}</td>
+          <td>{{ user.name }}</td>
+          <td>{{ user.email }}</td>
+          <td>
+            {% if user.is_admin %}<span class="badge text-bg-primary"
+              >Admin</span
+            >{% else %}<span class="badge text-bg-secondary">User</span>{% endif
+            %}
+          </td>
+          <td>{{ user.created_at.strftime('%d %b %Y') }}</td>
+          <td>{{ user.estimates.count() }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-4">
+            No registered users found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>User</th>
+          <th>Vehicle</th>
+          <th>Fuel / Transmission</th>
+          <th>Predicted price</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for estimate in estimates %}
+        <tr>
+          <td>{{ estimate.id }}</td>
+          <td>
+            {{ estimate.user.name }}<br /><small class="text-secondary"
+              >{{ estimate.user.email }}</small
+            >
+          </td>
+          <td>{{ estimate.year }} {{ estimate.brand }} {{ estimate.model }}</td>
+          <td>{{ estimate.fuel }} / {{ estimate.transmission }}</td>
+          <td>NPR {{ '{:,.0f}'.format(estimate.predicted_price) }}</td>
+          <td>{{ estimate.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-4">No predictions found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

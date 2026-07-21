@@ -4,19 +4,19 @@ import hmac
 import os
 import secrets
 import csv
+import json
 from io import StringIO
 from functools import wraps
 from pathlib import Path
-from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, Response
+from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, Response, jsonify
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from flask_migrate import Migrate
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from datetime import datetime, timedelta, timezone
-from threading import Lock                          # FIXED: import Lock for thread safety
-
-# Import the database instance from the new extensions file
+from threading import Lock                         
 from extensions import db
+from datetime import datetime
 def get_nepal_time():
     """Returns the current naive datetime converted to Nepal Standard Time (UTC+5:45)."""
     nepal_tz = timezone(timedelta(hours=5, minutes=45))
@@ -25,18 +25,19 @@ def get_nepal_time():
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-development-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:zenith123@localhost:5432/carresell_db"
+    "DATABASE_URL", "postgresql://postgres:Messi.100@localhost:5432/car_resell_db"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Initialize extensions
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Import models AFTER db initialization to avoid circular imports
 from models import User, Estimate
+
+DEFAULT_ADMIN_EMAIL = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@gmail.com").strip().lower()
+DEFAULT_ADMIN_PASSWORD = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin@123")
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
@@ -63,24 +64,171 @@ def safe_next_url(next_url):
         return next_url
     return url_for("profile")
 
+def ensure_default_admin():
+    """Create the initial administrator without requiring a signup flow."""
+    admin = User.query.filter(func.lower(User.email) == DEFAULT_ADMIN_EMAIL).first()
+    if admin is not None:
+        if not admin.is_admin:
+            admin.is_admin = True
+            db.session.commit()
+        return admin
+
+    admin = User(
+        name="AutoValue Administrator",
+        email=DEFAULT_ADMIN_EMAIL,
+        is_admin=True,
+    )
+    admin.set_password(DEFAULT_ADMIN_PASSWORD)
+    db.session.add(admin)
+    db.session.commit()
+    return admin
+
 app.jinja_env.globals["csrf_token"] = csrf_token
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# ---------------------------------------------------------
-# GLOBAL VARIABLES FOR MODEL AND METRICS
-# ---------------------------------------------------------
-CURRENT_YEAR = 2025
+CURRENT_YEAR = datetime.now().year
 pipeline_instance = None
 model_instance = None
 model_metrics = {}
-reference_data = None           # Clean data for similar cars
+reference_data = None           
 feature_importances = []
 training_samples_count = 0
 feature_count = 0
+vehicle_validation_rules = {}
+vehicle_dataset_catalog = {}
+vehicle_static_catalog = {}
 
-# FIXED: lock for thread-safe model access
 model_lock = Lock()
+
+def build_vehicle_validation_rules(df):
+    rules = {}
+    fields = {
+        'km_driven': {
+            'label': 'Kilometers driven',
+            'unit': 'km',
+            'min_quantile': 0.0,
+            'max_quantile': 0.99,
+            'min_floor': 0,
+            'integer': True,
+        },
+        'mileage': {
+            'label': 'Mileage',
+            'unit': 'kmpl',
+            'min_quantile': 0.01,
+            'max_quantile': 0.99,
+        },
+        'engine': {
+            'label': 'Engine size',
+            'unit': 'CC',
+            'min_quantile': 0.01,
+            'max_quantile': 0.99,
+        },
+        'max_power': {
+            'label': 'Maximum power',
+            'unit': 'bhp',
+            'min_quantile': 0.01,
+            'max_quantile': 0.99,
+        },
+    }
+
+    for name, config in fields.items():
+        values = pd.to_numeric(df[name], errors='coerce').dropna()
+        values = values[values > 0] if name != 'km_driven' else values[values >= 0]
+        if values.empty:
+            continue
+
+        min_value = float(values.quantile(config['min_quantile']))
+        max_value = float(values.quantile(config['max_quantile']))
+        if 'min_floor' in config:
+            min_value = max(float(config['min_floor']), min_value)
+
+        rules[name] = {
+            'label': config['label'],
+            'unit': config['unit'],
+            'min': round(min_value, 1),
+            'max': round(max_value, 1),
+            'average': round(float(values.mean()), 1),
+            'integer': config.get('integer', False),
+        }
+
+    return rules
+
+def build_vehicle_catalog(df):
+    catalog_df = df.copy()
+    catalog_df['brand'] = catalog_df['brand'].astype(str).str.strip()
+    catalog_df['model'] = catalog_df['model'].astype(str).str.strip()
+    catalog_df = catalog_df[(catalog_df['brand'] != '') & (catalog_df['model'] != '')]
+
+    brands = sorted(catalog_df['brand'].dropna().unique().tolist())
+    models_by_brand = {}
+    for brand in brands:
+        models = sorted(catalog_df.loc[catalog_df['brand'] == brand, 'model'].dropna().unique().tolist())
+        if "Other" in models:
+            models = [model for model in models if model != "Other"] + ["Other"]
+        else:
+            models.append("Other")
+        models_by_brand[brand] = models
+
+    return {
+        "source": "dataset",
+        "sourceFile": "UsedCars.csv",
+        "rowCount": int(len(catalog_df)),
+        "brandCount": len(brands),
+        "brands": brands,
+        "modelsByBrand": models_by_brand,
+    }
+
+def load_static_vehicle_catalog():
+    catalog_path = BASE_DIR / "static" / "data" / "vehicle_catalog.json"
+    try:
+        with open(catalog_path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {"brands": [], "modelsByBrand": {}}
+
+def normalize_catalog_value(value):
+    return str(value or "").strip().lower()
+
+def find_catalog_brand(catalog, brand):
+    wanted = normalize_catalog_value(brand)
+    for candidate in catalog.get("brands", []):
+        if normalize_catalog_value(candidate) == wanted:
+            return candidate
+    return None
+
+def get_catalog_models(catalog, brand):
+    matched_brand = find_catalog_brand(catalog, brand)
+    if not matched_brand:
+        return []
+    models = catalog.get("modelsByBrand", {}).get(matched_brand, [])
+    return models if isinstance(models, list) else []
+
+def find_catalog_model(models, model):
+    wanted = normalize_catalog_value(model)
+    for candidate in models:
+        if normalize_catalog_value(candidate) == wanted:
+            return candidate
+    return None
+
+def validate_catalog_vehicle(brand, model):
+    dataset_brand = find_catalog_brand(vehicle_dataset_catalog, brand)
+    static_brand = find_catalog_brand(vehicle_static_catalog, brand)
+    canonical_brand = dataset_brand or static_brand
+    if not canonical_brand:
+        return None, None, "Choose a brand from the suggestions."
+
+    dataset_models = get_catalog_models(vehicle_dataset_catalog, canonical_brand)
+    static_models = get_catalog_models(vehicle_static_catalog, canonical_brand)
+    available_models = dataset_models + [
+        item for item in static_models
+        if normalize_catalog_value(item) not in {normalize_catalog_value(m) for m in dataset_models}
+    ]
+    canonical_model = find_catalog_model(available_models, model)
+    if not canonical_model:
+        return canonical_brand, None, "Choose a valid model for the selected brand."
+
+    return canonical_brand, canonical_model, None
 
 class FullPipeline:
     def __init__(self):
@@ -189,6 +337,7 @@ class SGDRegressor:
 def initialize_and_train():
     global pipeline_instance, model_instance, model_metrics, reference_data
     global feature_importances, training_samples_count, feature_count
+    global vehicle_validation_rules, vehicle_dataset_catalog, vehicle_static_catalog
     
     print("Loading data and training model... This may take a moment.")
     np.random.seed(42)
@@ -199,6 +348,8 @@ def initialize_and_train():
     
     df['brand'] = df['name'].str.split().str[0]
     df['model'] = df['name'].str.split().str[1:].str.join(' ')
+    vehicle_dataset_catalog = build_vehicle_catalog(df)
+    vehicle_static_catalog = load_static_vehicle_catalog()
     
     for col, suffix in [('mileage', ' kmpl'), ('engine', ' CC'), ('max_power', ' bhp')]:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(suffix, '', regex=False), errors='coerce')
@@ -212,6 +363,7 @@ def initialize_and_train():
     df['brand_model'] = df['brand'] + "_" + df['model']
     
     reference_data = df.copy()
+    vehicle_validation_rules = build_vehicle_validation_rules(reference_data)
     
     train = df.sample(frac=0.8, random_state=42)
     test = df.drop(train.index)
@@ -259,9 +411,15 @@ def render_page(template_name, active_page, **context):
     context["active_page"] = active_page
     return render_template(template_name, **context)
 
-# ---------------------------------------------------------
-# ADMIN & HELPER FUNCTIONS
-# ---------------------------------------------------------
+def render_estimate_page(**context):
+    context.setdefault("metrics", model_metrics)
+    context.setdefault("price", None)
+    context.setdefault("error", None)
+    context.setdefault("form_data", {})
+    context["vehicle_validation_rules"] = vehicle_validation_rules
+    return render_page('estimate.html', 'estimate', **context)
+
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -276,7 +434,7 @@ def find_similar_cars(user_input, pred_price, top_n=5):
     
     df = reference_data.copy()
     
-    # Hard filters
+   
     df = df[(df['brand'] == user_input['brand']) & 
             (df['fuel'] == user_input['fuel'])]
     
@@ -306,9 +464,71 @@ def find_similar_cars(user_input, pred_price, top_n=5):
         })
     return results
 
-# ---------------------------------------------------------
-# FLASK ROUTES
-# ---------------------------------------------------------
+def format_rule_value(value):
+    if float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+def validate_estimate_form(form_data):
+    errors = {}
+    allowed_choices = {
+        'fuel': {'CNG', 'Petrol', 'Diesel', 'LPG'},
+        'transmission': {'Manual', 'Automatic'},
+        'seller_type': {'Individual', 'Dealer', 'Trustmark Dealer'},
+        'owner': {'First Owner', 'Second Owner', 'Third Owner', 'Fourth & Above Owner'},
+        'seats': {'4', '6', '7'},
+    }
+
+    for field in ['brand', 'model']:
+        if not form_data.get(field, '').strip():
+            errors[field] = f"Enter a {field}."
+
+    if 'brand' not in errors and 'model' not in errors:
+        brand, model, catalog_error = validate_catalog_vehicle(
+            form_data.get('brand', ''),
+            form_data.get('model', '')
+        )
+        if catalog_error:
+            errors['model' if brand else 'brand'] = catalog_error
+        else:
+            form_data['brand'] = brand
+            form_data['model'] = model
+
+    try:
+        year = int(form_data.get('year', ''))
+        if year < 1980 or year > 2030:
+            errors['year'] = "Use a year between 1980 and 2030."
+    except (TypeError, ValueError):
+        errors['year'] = "Enter a valid manufacturing year."
+
+    for field, choices in allowed_choices.items():
+        if form_data.get(field, '') not in choices:
+            errors[field] = "Choose a valid option."
+
+    for field, rule in vehicle_validation_rules.items():
+        raw_value = form_data.get(field, '').strip()
+        if not raw_value:
+            errors[field] = f"Enter {rule['label'].lower()}."
+            continue
+
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            errors[field] = f"{rule['label']} must be a number."
+            continue
+
+        if rule.get('integer') and not value.is_integer():
+            errors[field] = f"{rule['label']} must be a whole number."
+            continue
+
+        if value < rule['min'] or value > rule['max']:
+            errors[field] = (
+                f"{rule['label']} should be between {format_rule_value(rule['min'])} "
+                f"and {format_rule_value(rule['max'])} {rule['unit']}."
+            )
+
+    return errors
+
 @app.route('/', methods=['GET'])
 def index():
     return render_page('index.html', 'home', metrics=model_metrics, price=None)
@@ -329,6 +549,18 @@ def metrics():
                        chart_labels=labels,
                        chart_data=data)
 
+@app.route('/api/vehicle-catalog')
+def vehicle_catalog_api():
+    if not vehicle_dataset_catalog:
+        return jsonify({
+            "source": "dataset",
+            "brands": [],
+            "modelsByBrand": {},
+            "brandCount": 0,
+            "rowCount": 0,
+        })
+    return jsonify(vehicle_dataset_catalog)
+
 @app.route('/estimate/<int:estimate_id>/buy', methods=['POST'])
 @login_required
 def mark_bought(estimate_id):
@@ -340,12 +572,12 @@ def mark_bought(estimate_id):
     actual_price = request.form.get('actual_price', type=float)
     
     if actual_price:
-        # 1. Update Database
+        
         estimate.is_bought = True
         estimate.actual_price = actual_price
         db.session.commit()
         
-        # 2. Reconstruct the car data
+        
         try:
             car_data = {
                 'year': estimate.year,
@@ -360,19 +592,19 @@ def mark_bought(estimate_id):
                 'seats': estimate.seats, 
                 'brand': estimate.brand,
                 'model': estimate.model
-                # FIXED: brand_model will be derived, not needed here
+                
             }
             
             user_df = pd.DataFrame([car_data])
-            # FIXED: add brand_model before transformation
+            
             user_df['brand_model'] = user_df['brand'] + '_' + user_df['model']
             
-            with model_lock:   # FIXED: thread-safe access
+            with model_lock:  
                 X_new = pipeline_instance.transform(user_df)
                 y_new = np.log1p(actual_price / 2.2) 
                 model_instance.partial_fit(X_new, [y_new])
             
-            # 4. Append to CSV so the model remembers this across server restarts
+            
             with open(BASE_DIR / "UsedCars.csv", "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 full_name = f"{estimate.brand} {estimate.model}"
@@ -406,10 +638,10 @@ def mark_bought(estimate_id):
 @app.route('/admin')
 @admin_required
 def admin_dashboard():
-    total_users = User.query.count()
+    total_users = User.query.filter(User.is_admin.is_(False)).count()
     total_preds = Estimate.query.count()
     
-    # FIXED: Replaced datetime.utcnow() with Nepali Time midnight configuration
+    
     today_start = get_nepal_time().replace(hour=0, minute=0, second=0, microsecond=0)
     today_preds = Estimate.query.filter(Estimate.created_at >= today_start).count()
     
@@ -423,6 +655,18 @@ def admin_dashboard():
                        today_preds=today_preds,
                        avg_price=avg_price,
                        recent_estimates=recent_estimates)
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = User.query.filter(User.is_admin.is_(False)).order_by(User.id.asc()).all()
+    return render_page('admin_records.html', 'admin', view='users', users=users)
+
+@app.route('/admin/predictions')
+@admin_required
+def admin_predictions():
+    estimates = Estimate.query.order_by(Estimate.id.asc()).all()
+    return render_page('admin_records.html', 'admin', view='predictions', estimates=estimates)
 
 @app.route('/admin/export')
 @admin_required
@@ -450,15 +694,22 @@ def export_csv():
 
 @app.route('/estimate')
 def estimate():
-    return render_page('estimate.html', 'estimate', metrics=model_metrics, price=None, error=None, form_data={})
+    return render_estimate_page()
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('profile'))
+        return redirect(url_for('admin_dashboard') if current_user.is_admin else url_for('profile'))
 
     next_url = request.args.get('next', '')
     form_data = {'email': ''}
+
+    try:
+        ensure_default_admin()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"DEFAULT ADMIN SETUP ERROR: {e}")
+        return "Database Error: Could not set up the default administrator.", 503
 
     if request.method == 'POST':
         form_data['email'] = request.form.get('email', '').strip().lower()
@@ -482,7 +733,6 @@ def login():
             db.session.rollback()
             return "Database Error: " + str(e), 503
 
-        # The original loose return has been removed – no change needed
         
         try:
             valid_credentials = user is not None and user.check_password(password)
@@ -496,9 +746,11 @@ def login():
             ), 401
 
         login_user(user)
-        # FIXED: Regenerate CSRF token after successful login
+
         session.pop('_csrf_token', None)
         flash('Welcome back, {}.'.format(user.name), 'success')
+        if user.is_admin:
+            return redirect(url_for('admin_dashboard'))
         return redirect(safe_next_url(next_url))
 
     return render_page('login.html', 'login', form_data=form_data, next_url=next_url, error=None)
@@ -551,7 +803,7 @@ def signup():
             ), 503
 
         login_user(user)
-        # FIXED: Regenerate CSRF token after successful signup
+        
         session.pop('_csrf_token', None)
         flash('Your account has been created. Welcome to AutoValue.', 'success')
         return redirect(url_for('index'))
@@ -584,10 +836,21 @@ def logout():
 def predict():
     form_data = request.form.to_dict(flat=True)
     if not csrf_is_valid():
-        return render_page('estimate.html', 'estimate', metrics=model_metrics, price=None,
-            error='Your form expired. Please submit the estimate again.', form_data=form_data), 400
+        return render_estimate_page(
+            error='Your form expired. Please submit the estimate again.',
+            form_data=form_data
+        ), 400
 
-    # FIXED: regenerate CSRF token on successful form submission
+    validation_errors = validate_estimate_form(form_data)
+    if validation_errors:
+        first_error = next(iter(validation_errors.values()))
+        return render_estimate_page(
+            error=first_error,
+            form_data=form_data,
+            validation_errors=validation_errors
+        ), 400
+
+    
     session.pop('_csrf_token', None)
 
     try:
@@ -602,9 +865,9 @@ def predict():
             'engine': float(form_data['engine']),
             'max_power': float(form_data['max_power']),
             'seats': float(form_data['seats']),
-            'brand': form_data['brand'],
-            'model': form_data['model'],
-            'brand_model': f"{form_data['brand']}_{form_data['model']}"
+            'brand': form_data['brand'].strip(),
+            'model': form_data['model'].strip(),
+            'brand_model': f"{form_data['brand'].strip()}_{form_data['model'].strip()}"
         }
 
         user_df = pd.DataFrame([user_input])
@@ -644,16 +907,14 @@ def predict():
                 db.session.rollback()
                 save_error = 'Your estimate was generated, but it could not be saved to history.'
         
-        return render_page(
-            'estimate.html', 'estimate', metrics=model_metrics, 
+        return render_estimate_page(
             price=formatted_price, min_price=formatted_min, max_price=formatted_max,
             similar_cars=similar_cars, error=None, save_error=save_error, form_data=form_data,
             estimate_saved=current_user.is_authenticated and save_error is None
         )
     
     except Exception as e:
-        return render_page(
-            'estimate.html', 'estimate', metrics=model_metrics, price=None,
+        return render_estimate_page(
             error='Could not generate an estimate from those details. Please check the fields and try again.',
             form_data=form_data
         )

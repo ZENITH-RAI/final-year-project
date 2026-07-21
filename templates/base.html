@@ -3,36 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}AutoValue — Used car price estimates{% endblock %}</title>
-    <meta name="description" content="{% block description %}Get a fair used car value estimate. Pick your vehicle, enter a few details, and see a price guide in minutes.{% endblock %}" />
-    
+    <title>
+      {% block title %}AutoValue — Used car price estimates{% endblock %}
+    </title>
+    <meta
+      name="description"
+      content="{% block description %}Get a fair used car value estimate. Pick your vehicle, enter a few details, and see a price guide in minutes.{% endblock %}"
+    />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-    
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+
     {% block extra_css %}{% endblock %}
-    
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles.css') }}"
+    />
   </head>
   <body class="{% block body_class %}{% endblock %}">
-    
     {% include "_site_header.html" %}
 
-    <main id="main">
-      {% block content %}{% endblock %}
-    </main>
+    <main id="main">{% block content %}{% endblock %}</main>
 
     <footer class="site-footer">
-      <div class="wrap">
-        <p>
-          &copy;
-          <a href="https://github.com/derAuserwaehlte" target="_blank">Aashish Bista</a> &middot;
-          <a href="https://github.com/BiswasSunar" target="_blank">Bishwash Bishwakarma Paudel</a> &middot;
-          <a href="https://github.com/ZENITH-RAI" target="_blank">Zenith Rai</a>
-          &copy;
+      <div class="wrap site-footer__inner">
+        <p class="site-footer__credits">
+          <span>&copy; AutoValue</span>
+          <span aria-hidden="true">&middot;</span>
+          <a
+            href="https://github.com/derAuserwaehlte"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Aashish Bista</a
+          >
+          <a
+            href="https://github.com/BiswasSunar"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Bishwash Bishwakarma Paudel</a
+          >
+          <a
+            href="https://github.com/ZENITH-RAI"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Zenith Rai</a
+          >
         </p>
-        <p>
-          AutoValue — estimates are guides only, not financial or legal advice.
+        <p class="site-footer__notice">
+          Estimates are guides only, not financial or legal advice.
         </p>
       </div>
     </footer>

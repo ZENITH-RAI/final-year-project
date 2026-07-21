@@ -30,12 +30,32 @@
 <div class="wrap">
   <header class="page-head">
     <h1>Price estimator</h1>
+    <p>Enter your vehicle details for a data-informed resale price range.</p>
   </header>
+
+  {% if not current_user.is_authenticated %}
+  <dialog class="guest-prompt" data-guest-prompt aria-labelledby="guest-prompt-title">
+    <div class="guest-prompt__content">
+      <p class="guest-prompt__eyebrow">Save your estimates</p>
+      <h2 id="guest-prompt-title">Log in to keep your estimate history.</h2>
+      <p>You can continue without an account, but logging in lets you revisit saved estimates later.</p>
+      <div class="guest-prompt__actions">
+        <a class="btn btn--primary" href="{{ url_for('login', next=url_for('estimate')) }}">Log in</a>
+        <button class="btn btn--ghost" type="button" data-continue-guest>Continue as guest</button>
+      </div>
+    </div>
+  </dialog>
+  {% endif %}
 
   <div class="estimator">
     <div class="form-panel">
       <h2>Vehicle details</h2>
       <p class="form-panel__hint">* All fields below are required.</p>
+      {% set validation_errors = validation_errors|default({}) %}
+      {% set km_rule = vehicle_validation_rules.get('km_driven', {}) %}
+      {% set mileage_rule = vehicle_validation_rules.get('mileage', {}) %}
+      {% set engine_rule = vehicle_validation_rules.get('engine', {}) %}
+      {% set power_rule = vehicle_validation_rules.get('max_power', {}) %}
       <form id="estimate-form" action="{{ url_for('predict') }}" method="post" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <div class="form-grid">
@@ -93,7 +113,7 @@
             />
             <span class="field__error" role="alert"></span>
           </div>
-          <div class="field" data-field="km_driven">
+          <div class="field{% if validation_errors.get('km_driven') %} field--error{% endif %}" data-field="km_driven">
             <label for="km_driven">Kilometers driven</label>
             <input
               type="number"
@@ -101,54 +121,55 @@
               name="km_driven"
               value="{{ form_data.get('km_driven', '') }}"
               placeholder="Eg.: 10000"
-              min="0"
+              min="{{ km_rule.get('min', 0) }}"
+              max="{{ km_rule.get('max', 225000) }}"
               step="1"
               required
             />
-            <span class="field__error" role="alert"></span>
+            <small class="field__hint">Range: {{ km_rule.get('min', 0)|int }}-{{ km_rule.get('max', 225000)|int }} km. </small>
+            <span class="field__error" role="alert">{{ validation_errors.get('km_driven', '') }}</span>
           </div>
-          <div class="field" data-field="fuel">
-            <label for="fuel">Fuel type</label>
-            <select id="fuel" name="fuel">
-              <option value="" {% if form_data.get('fuel', '') == '' %}selected{% endif %}>Select the Fuel type</option>
-              <option value="CNG" {% if form_data.get('fuel') == 'CNG' %}selected{% endif %}>CNG</option>
-              <option value="Petrol" {% if form_data.get('fuel') == 'Petrol' %}selected{% endif %}>Petrol</option>
-              <option value="Diesel" {% if form_data.get('fuel') == 'Diesel' %}selected{% endif %}>Diesel</option>
-              <option value="LPG" {% if form_data.get('fuel') == 'LPG' %}selected{% endif %}>LPG</option>
-            </select>
+          <fieldset class="field choice-field" data-field="fuel">
+            <legend>Fuel type</legend>
+            <input type="hidden" id="fuel" name="fuel" value="{{ form_data.get('fuel', 'Petrol') }}" />
+            <div class="choice-grid" data-choice-group="fuel">
+              {% for fuel in ['CNG', 'Petrol', 'Diesel', 'LPG'] %}
+              <label><input type="checkbox" value="{{ fuel }}" {% if form_data.get('fuel', 'Petrol') == fuel %}checked{% endif %} />{{ fuel }}</label>
+              {% endfor %}
+            </div>
             <span class="field__error" role="alert"></span>
-          </div>
-          <div class="field" data-field="transmission">
-            <label for="transmission">Transmission</label>
-            <select id="transmission" name="transmission">
-              <option value="" {% if form_data.get('transmission', '') == '' %}selected{% endif %}>Select the Transmission type</option>
-              <option value="Manual" {% if form_data.get('transmission') == 'Manual' %}selected{% endif %}>Manual</option>
-              <option value="Automatic" {% if form_data.get('transmission') == 'Automatic' %}selected{% endif %}>Automatic</option>
-            </select>
+          </fieldset>
+          <fieldset class="field choice-field" data-field="transmission">
+            <legend>Transmission</legend>
+            <input type="hidden" id="transmission" name="transmission" value="{{ form_data.get('transmission', 'Manual') }}" />
+            <div class="choice-grid" data-choice-group="transmission">
+              {% for transmission in ['Manual', 'Automatic'] %}
+              <label><input type="checkbox" value="{{ transmission }}" {% if form_data.get('transmission', 'Manual') == transmission %}checked{% endif %} />{{ transmission }}</label>
+              {% endfor %}
+            </div>
             <span class="field__error" role="alert"></span>
-          </div>
-          <div class="field" data-field="seller_type">
-            <label for="seller_type">Seller type</label>
-            <select id="seller_type" name="seller_type">
-              <option value="" {% if form_data.get('seller_type', '') == '' %}selected{% endif %}>Select Seller type</option>
-              <option value="Individual" {% if form_data.get('seller_type') == 'Individual' %}selected{% endif %}>Individual</option>
-              <option value="Dealer" {% if form_data.get('seller_type') == 'Dealer' %}selected{% endif %}>Dealer</option>
-              <option value="Trustmark Dealer" {% if form_data.get('seller_type') == 'Trustmark Dealer' %}selected{% endif %}>Trustmark Dealer</option>
-            </select>
+          </fieldset>
+          <fieldset class="field choice-field" data-field="seller_type">
+            <legend>Seller type</legend>
+            <input type="hidden" id="seller_type" name="seller_type" value="{{ form_data.get('seller_type', 'Individual') }}" />
+            <div class="choice-grid" data-choice-group="seller_type">
+              {% for seller in ['Individual', 'Dealer', 'Trustmark Dealer'] %}
+              <label><input type="checkbox" value="{{ seller }}" {% if form_data.get('seller_type', 'Individual') == seller %}checked{% endif %} />{{ seller }}</label>
+              {% endfor %}
+            </div>
             <span class="field__error" role="alert"></span>
-          </div>
-          <div class="field" data-field="owner">
-            <label for="owner">Owner</label>
-            <select id="owner" name="owner">
-              <option value="" {% if form_data.get('owner', '') == '' %}selected{% endif %}>Select Owner type</option>
-              <option value="First Owner" {% if form_data.get('owner') == 'First Owner' %}selected{% endif %}>First Owner</option>
-              <option value="Second Owner" {% if form_data.get('owner', 'Second Owner') == 'Second Owner' %}selected{% endif %}>Second Owner</option>
-              <option value="Third Owner" {% if form_data.get('owner') == 'Third Owner' %}selected{% endif %}>Third Owner</option>
-              <option value="Fourth &amp; Above Owner" {% if form_data.get('owner') == 'Fourth & Above Owner' %}selected{% endif %}>Fourth &amp; Above Owner</option>
-            </select>
+          </fieldset>
+          <fieldset class="field choice-field" data-field="owner">
+            <legend>Owner</legend>
+            <input type="hidden" id="owner" name="owner" value="{{ form_data.get('owner', 'Second Owner') }}" />
+            <div class="choice-grid" data-choice-group="owner">
+              {% for owner in ['First Owner', 'Second Owner', 'Third Owner', 'Fourth & Above Owner'] %}
+              <label><input type="checkbox" value="{{ owner }}" {% if form_data.get('owner', 'Second Owner') == owner %}checked{% endif %} />{{ owner }}</label>
+              {% endfor %}
+            </div>
             <span class="field__error" role="alert"></span>
-          </div>
-          <div class="field" data-field="mileage">
+          </fieldset>
+          <div class="field{% if validation_errors.get('mileage') %} field--error{% endif %}" data-field="mileage">
             <label for="mileage">Mileage (kmpl)</label>
             <input
               type="number"
@@ -156,13 +177,15 @@
               name="mileage"
               value="{{ form_data.get('mileage', '') }}"
               placeholder="Eg.: 20.0"
-              min="0.1"
+              min="{{ mileage_rule.get('min', 11) }}"
+              max="{{ mileage_rule.get('max', 28) }}"
               step="0.1"
               required
             />
-            <span class="field__error" role="alert"></span>
+            <small class="field__hint">Range: {{ mileage_rule.get('min', 11) }}-{{ mileage_rule.get('max', 28) }} kmpl.</small>
+            <span class="field__error" role="alert">{{ validation_errors.get('mileage', '') }}</span>
           </div>
-          <div class="field" data-field="engine">
+          <div class="field{% if validation_errors.get('engine') %} field--error{% endif %}" data-field="engine">
             <label for="engine">Engine (CC)</label>
             <input
               type="number"
@@ -170,13 +193,15 @@
               name="engine"
               value="{{ form_data.get('engine', '') }}"
               placeholder="Eg.: 796"
-              min="1"
+              min="{{ engine_rule.get('min', 796) }}"
+              max="{{ engine_rule.get('max', 2967) }}"
               step="0.1"
               required
             />
-            <span class="field__error" role="alert"></span>
+            <small class="field__hint">Range: {{ engine_rule.get('min', 796)|int }}-{{ engine_rule.get('max', 2967)|int }} CC.</small>
+            <span class="field__error" role="alert">{{ validation_errors.get('engine', '') }}</span>
           </div>
-          <div class="field" data-field="max_power">
+          <div class="field{% if validation_errors.get('max_power') %} field--error{% endif %}" data-field="max_power">
             <label for="max_power">Max power (bhp)</label>
             <input
               type="number"
@@ -184,27 +209,24 @@
               name="max_power"
               value="{{ form_data.get('max_power', '') }}"
               placeholder="Eg.: 40.3"
-              min="0.1"
+              min="{{ power_rule.get('min', 37) }}"
+              max="{{ power_rule.get('max', 212.9) }}"
               step="0.1"
               required
             />
-            <span class="field__error" role="alert"></span>
+            <small class="field__hint">Usual range: {{ power_rule.get('min', 37) }}-{{ power_rule.get('max', 212.9) }} bhp.</small>
+            <span class="field__error" role="alert">{{ validation_errors.get('max_power', '') }}</span>
           </div>
-          <div class="field" data-field="seats">
-            <label for="seats">Seats</label>
-            <input
-              type="number"
-              id="seats"
-              name="seats"
-              value="{{ form_data.get('seats', '') }}"
-              placeholder="Eg.: 4"
-              min="2"
-              max="12"
-              step="1"
-              required
-            />
+          <fieldset class="field choice-field" data-field="seats">
+            <legend>Seats</legend>
+            <input type="hidden" id="seats" name="seats" value="{{ form_data.get('seats', '4') }}" />
+            <div class="choice-grid" data-choice-group="seats">
+              <label><input type="checkbox" value="4" {% if form_data.get('seats', '4')|string == '4' %}checked{% endif %} />4 seats</label>
+              <label><input type="checkbox" value="6" {% if form_data.get('seats')|string == '6' %}checked{% endif %} />6 seats</label>
+              <label><input type="checkbox" value="7" {% if form_data.get('seats')|string in ['7', '8', '9', '10', '11', '12'] %}checked{% endif %} />More than 6</label>
+            </div>
             <span class="field__error" role="alert"></span>
-          </div>
+          </fieldset>
         </div>
 
         <button type="submit" class="btn btn--primary btn--block" style="margin-top: 1.5rem">
@@ -294,7 +316,45 @@
 
 {% block extra_js %}
 <script>
+  window.VEHICLE_DATASET_CATALOG_URL = "{{ url_for('vehicle_catalog_api') }}";
   window.VEHICLE_CATALOG_URL = "{{ url_for('static', filename='data/vehicle_catalog.json') }}";
+  window.VEHICLE_VALIDATION_RULES = {{ vehicle_validation_rules|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/vehicleAutocomplete.js') }}"></script>
+<script>
+  document.querySelectorAll('[data-choice-group]').forEach(function (group) {
+    var target = document.getElementById(group.dataset.choiceGroup);
+    var choices = group.querySelectorAll('input[type="checkbox"]');
+
+    choices.forEach(function (choice) {
+      choice.addEventListener('change', function () {
+        if (!choice.checked) {
+          choice.checked = true;
+          return;
+        }
+        choices.forEach(function (other) { other.checked = other === choice; });
+        target.value = choice.value;
+      });
+    });
+  });
+</script>
+{% if not current_user.is_authenticated %}
+<script>
+  (function () {
+    var prompt = document.querySelector('[data-guest-prompt]');
+    if (!prompt || sessionStorage.getItem('autovalue-estimate-prompt-seen')) return;
+
+    if (typeof prompt.showModal === 'function') {
+      prompt.showModal();
+    } else {
+      prompt.setAttribute('open', '');
+    }
+
+    prompt.querySelector('[data-continue-guest]').addEventListener('click', function () {
+      sessionStorage.setItem('autovalue-estimate-prompt-seen', 'true');
+      prompt.close();
+    });
+  }());
+</script>
+{% endif %}
 {% endblock %}
