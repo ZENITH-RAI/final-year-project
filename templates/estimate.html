@@ -318,7 +318,7 @@
 <script>
   window.VEHICLE_DATASET_CATALOG_URL = "{{ url_for('vehicle_catalog_api') }}";
   window.VEHICLE_CATALOG_URL = "{{ url_for('static', filename='data/vehicle_catalog.json') }}";
-  window.VEHICLE_VALIDATION_RULES = {{ vehicle_validation_rules|tojson }};
+  window.VEHICLE_VALIDATION_RULES = {{ vehicle_validation_rules|default({}, true)|tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/vehicleAutocomplete.js') }}"></script>
 <script>
