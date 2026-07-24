@@ -3,6 +3,42 @@
 {% block title %}SignUp — AutoValue{% endblock %}
 {% block description %}Create an AutoValue account to save and review your estimate history.{% endblock %}
 
+{% block extra_css %}
+<style>
+  .password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .password-wrapper input {
+    width: 100%;
+    padding-right: 2.75rem; 
+  }
+  .password-toggle {
+    position: absolute;
+    right: 0.5rem;
+    background: transparent;
+    border: none;
+    padding: 0.35rem;
+    cursor: pointer;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: color 0.2s, background-color 0.2s;
+  }
+  .password-toggle:hover {
+    color: #374151;
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  .password-toggle:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="wrap auth-page">
   <section class="auth-shell" aria-labelledby="signup-title">
@@ -41,30 +77,49 @@
           />
           <span class="field__error" role="alert"></span>
         </div>
+        
         <div class="field" data-field="password">
           <label for="signup-password">Password</label>
-          <input
-            type="password"
-            id="signup-password"
-            name="password"
-            placeholder="Create a password"
-            autocomplete="new-password"
-            required
-          />
+          <div class="password-wrapper">
+            <input
+              type="password"
+              id="signup-password"
+              name="password"
+              placeholder="Create a password"
+              autocomplete="new-password"
+              required
+            />
+            <button type="button" class="password-toggle" aria-label="Show password">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
           <span class="field__error" role="alert"></span>
         </div>
+
         <div class="field" data-field="confirm_password">
           <label for="signup-confirm">Confirm password</label>
-          <input
-            type="password"
-            id="signup-confirm"
-            name="confirm_password"
-            placeholder="Repeat your password"
-            autocomplete="new-password"
-            required
-          />
+          <div class="password-wrapper">
+            <input
+              type="password"
+              id="signup-confirm"
+              name="confirm_password"
+              placeholder="Repeat your password"
+              autocomplete="new-password"
+              required
+            />
+            <button type="button" class="password-toggle" aria-label="Show password">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
           <span class="field__error" role="alert"></span>
         </div>
+        
         <div class="auth-form__actions">
           <button type="submit" class="btn btn--primary">Sign up</button>
           <a class="btn btn--ghost auth-form__guest" href="{{ url_for('estimate') }}">Use guest estimate</a>
@@ -82,4 +137,28 @@
     </aside>
   </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.querySelectorAll('.password-toggle').forEach(button => {
+    button.addEventListener('click', function() {
+      const input = this.previousElementSibling;
+      const isPassword = input.type === 'password';
+      
+      // Toggle input type
+      input.type = isPassword ? 'text' : 'password';
+      
+      // Update aria-label for accessibility
+      this.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+      
+      // Update SVG Icon
+      if (isPassword) {
+        this.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>`;
+      } else {
+        this.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>`;
+      }
+    });
+  });
+</script>
 {% endblock %}
