@@ -35,27 +35,28 @@
         <span class="metric-value text-primary"> Rs. {{ metrics.MAE }}</span>
       </div>
     </div>
-    <div class="col-md-3">
+    <!-- <div class="col-md-3">
       <div class="card text-center p-4 h-100">
         <span class="metric-label">RMSE</span>
         <span class="metric-value text-danger">Rs. {{ metrics.RMSE }}</span>
       </div>
-    </div>
+    </div> -->
     <div class="col-md-3">
       <div class="card text-center p-4 h-100">
         <span class="metric-label">R² Score</span>
         <span class="metric-value text-success">{{ metrics.R2 }}</span>
       </div>
     </div>
-    <div class="col-md-3">
+    <!-- <div class="col-md-3">
       <div class="card text-center p-4 h-100">
         <span class="metric-label">MAPE</span>
         <span class="metric-value text-warning">{{ metrics.MAPE }}</span>
       </div>
     </div>
-  </div>
+  </div> -->
 
-  {% endblock %} {% block extra_js %}
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  {% endblock %}
+    {% endblock %} {% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% endblock %}
+  </div>
 </div>
