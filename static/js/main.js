@@ -198,20 +198,25 @@
       max: 212.9,
       average: 91.2,
       required: "Enter maximum power in bhp.",
-    })
+    }),
   };
 
   var textRules = {
     brand: "Enter a brand.",
-    model: "Enter a model."
+    model: "Enter a model.",
   };
 
   var choiceRules = {
     fuel: ["CNG", "Petrol", "Diesel", "LPG"],
     transmission: ["Manual", "Automatic"],
     seller_type: ["Individual", "Dealer", "Trustmark Dealer"],
-    owner: ["First Owner", "Second Owner", "Third Owner", "Fourth & Above Owner"],
-    seats: ["4", "6", "7"]
+    owner: [
+      "First Owner",
+      "Second Owner",
+      "Third Owner",
+      "Fourth & Above Owner",
+    ],
+    seats: ["4", "6", "7"],
   };
 
   function validateVehicleNumberField(name, showRequired) {
@@ -251,7 +256,7 @@
           formatRuleValue(rule.average) +
           " " +
           rule.unit +
-          "."
+          ".",
       );
       return false;
     }
@@ -278,8 +283,15 @@
 
       if (name === "model") {
         var brand = form.elements.brand ? form.elements.brand.value.trim() : "";
-        if (brand && catalogLookup.isValidBrand(brand) && !catalogLookup.isValidModelForBrand(brand, value)) {
-          setFieldError("model", "Select a valid model for the selected brand.");
+        if (
+          brand &&
+          catalogLookup.isValidBrand(brand) &&
+          !catalogLookup.isValidModelForBrand(brand, value)
+        ) {
+          setFieldError(
+            "model",
+            "Select a valid model for the selected brand.",
+          );
           return false;
         }
       }
@@ -299,8 +311,8 @@
     }
 
     var year = Number(value);
-    if (!Number.isInteger(year) || year < 1980 || year > 2030) {
-      setFieldError("year", "Use a year between 1980 and 2030.");
+    if (!Number.isInteger(year) || year < 1980 || year > 2026) {
+      setFieldError("year", "Use a year between 1980 and 2026.");
       return false;
     }
 

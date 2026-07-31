@@ -417,6 +417,7 @@ def render_estimate_page(**context):
     context.setdefault("error", None)
     context.setdefault("form_data", {})
     context["vehicle_validation_rules"] = vehicle_validation_rules
+    context["current_year"] = CURRENT_YEAR 
     return render_page('estimate.html', 'estimate', **context)
 
 
@@ -496,8 +497,9 @@ def validate_estimate_form(form_data):
 
     try:
         year = int(form_data.get('year', ''))
-        if year < 1980 or year > 2030:
-            errors['year'] = "Use a year between 1980 and 2030."
+        # This condition and message control the red text
+        if year < 1980 or year > 2026:
+            errors['year'] = "Use a year between 1980 and 2026." 
     except (TypeError, ValueError):
         errors['year'] = "Enter a valid manufacturing year."
 

@@ -99,7 +99,7 @@
             </div>
             <span class="field__error" role="alert"></span>
           </div>
-          <div class="field" data-field="year">
+          <!-- <div class="field" data-field="year">
             <label for="year">Manufacturing year</label>
             <input
               type="number"
@@ -108,11 +108,29 @@
               value="{{ form_data.get('year', '') }}"
               placeholder="Eg.: 2019"
               min="1980"
-              max="2030"
+              max="{{ current_year }}"
               required
             />
             <span class="field__error" role="alert"></span>
-          </div>
+          </div> -->
+          <div class="field{% if validation_errors.get('year') %} field--error{% endif %}" data-field="year">
+          <label for="year">Manufacturing year</label>
+          <input
+            type="number"
+            id="year"
+            name="year"
+            value="{{ form_data.get('year', '') }}"
+            placeholder="Eg.: 2019"
+            min="1980"
+            max="2026"
+            required
+          />
+  <!-- This adds the permanent hint message below the input field -->
+  <small class="field__hint">Range: 1980 to 2026</small>
+  
+  <!-- This keeps the red error message logic for invalid submissions -->
+  <span class="field__error" role="alert">{{ validation_errors.get('year', '') }}</span> 
+</div>
           <div class="field{% if validation_errors.get('km_driven') %} field--error{% endif %}" data-field="km_driven">
             <label for="km_driven">Kilometers driven</label>
             <input
