@@ -25,7 +25,7 @@ def get_nepal_time():
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-development-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:Messi.100@localhost:5432/car_resell_db"
+    "DATABASE_URL", "postgresql://postgres:zenith123@localhost:5432/carresell_db"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -74,7 +74,7 @@ def ensure_default_admin():
         return admin
 
     admin = User(
-        name="AutoValue Administrator",
+        name="Car Resell Prediction & Recommendation System Administrator",
         email=DEFAULT_ADMIN_EMAIL,
         is_admin=True,
     )
@@ -465,6 +465,43 @@ def find_similar_cars(user_input, pred_price, top_n=5):
         })
     return results
 
+def record_purchase(estimate, actual_price):
+    """Store a completed purchase and use the confirmed value for future learning."""
+    estimate.is_bought = True
+    estimate.actual_price = actual_price
+    db.session.commit()
+
+    try:
+        car_data = {
+            'year': estimate.year, 'km_driven': estimate.km_driven,
+            'fuel': estimate.fuel, 'seller_type': estimate.seller_type,
+            'transmission': estimate.transmission, 'owner': estimate.owner,
+            'mileage': estimate.mileage, 'engine': estimate.engine,
+            'max_power': estimate.max_power, 'seats': estimate.seats,
+            'brand': estimate.brand, 'model': estimate.model,
+        }
+        if any(value is None for value in car_data.values()):
+            raise AttributeError('Vehicle specifications are incomplete')
+
+        user_df = pd.DataFrame([car_data])
+        user_df['brand_model'] = user_df['brand'] + '_' + user_df['model']
+        with model_lock:
+            X_new = pipeline_instance.transform(user_df)
+            model_instance.partial_fit(X_new, [np.log1p(actual_price / 2.2)])
+
+        with open(BASE_DIR / "UsedCars.csv", "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                f"{estimate.brand} {estimate.model}", estimate.year, actual_price / 2.2,
+                estimate.km_driven, estimate.fuel, estimate.seller_type,
+                estimate.transmission, estimate.owner, f"{estimate.mileage} kmpl",
+                f"{estimate.engine} CC", f"{estimate.max_power} bhp", "", estimate.seats,
+            ])
+        return True
+    except (AttributeError, ValueError) as error:
+        print(f"Model retraining skipped: {error}")
+        return False
+
 def format_rule_value(value):
     if float(value).is_integer():
         return str(int(value))
@@ -570,71 +607,51 @@ def mark_bought(estimate_id):
     
     if estimate.user_id != current_user.id:
         abort(403)
+    if not csrf_is_valid():
+        flash('Your purchase form expired. Please try again.', 'error')
+        return redirect(url_for('profile'))
     
     actual_price = request.form.get('actual_price', type=float)
     
-    if actual_price:
-        
-        estimate.is_bought = True
-        estimate.actual_price = actual_price
-        db.session.commit()
-        
-        
-        try:
-            car_data = {
-                'year': estimate.year,
-                'km_driven': estimate.km_driven, 
-                'fuel': estimate.fuel,
-                'seller_type': estimate.seller_type, 
-                'transmission': estimate.transmission,
-                'owner': estimate.owner, 
-                'mileage': estimate.mileage, 
-                'engine': estimate.engine, 
-                'max_power': estimate.max_power, 
-                'seats': estimate.seats, 
-                'brand': estimate.brand,
-                'model': estimate.model
-                
-            }
-            
-            user_df = pd.DataFrame([car_data])
-            
-            user_df['brand_model'] = user_df['brand'] + '_' + user_df['model']
-            
-            with model_lock:  
-                X_new = pipeline_instance.transform(user_df)
-                y_new = np.log1p(actual_price / 2.2) 
-                model_instance.partial_fit(X_new, [y_new])
-            
-            
-            with open(BASE_DIR / "UsedCars.csv", "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                full_name = f"{estimate.brand} {estimate.model}"
-                writer.writerow([
-                    full_name, 
-                    estimate.year, 
-                    actual_price / 2.2,
-                    estimate.km_driven, 
-                    estimate.fuel, 
-                    estimate.seller_type, 
-                    estimate.transmission, 
-                    estimate.owner, 
-                    f"{estimate.mileage} kmpl", 
-                    f"{estimate.engine} CC", 
-                    f"{estimate.max_power} bhp", 
-                    "", 
-                    estimate.seats
-                ])
-                
-            flash('Purchase recorded! The AI model has learned from your data.', 'success')
-            
-        except AttributeError as e:
-            print(f"Model Retraining Failed: Missing fields in database - {e}")
-            flash('Purchase saved, but model could not update (missing vehicle specs).', 'success')
+    if actual_price and actual_price > 0:
+        learned = record_purchase(estimate, actual_price)
+        flash('Purchase recorded! The AI model has learned from your data.' if learned else 'Purchase saved, but model could not update (missing vehicle specs).', 'success')
 
     else:
         flash('Please enter a valid price.', 'error')
         
+    return redirect(url_for('profile'))
+
+@app.route('/buy/<int:estimate_id>')
+@login_required
+def checkout(estimate_id):
+    estimate = Estimate.query.get_or_404(estimate_id)
+    if estimate.user_id != current_user.id:
+        abort(403)
+    if estimate.is_bought:
+        flash('This vehicle has already been purchased.', 'info')
+        return redirect(url_for('profile'))
+    return render_page('checkout.html', 'buy', estimate=estimate)
+
+@app.route('/buy/<int:estimate_id>/esewa', methods=['POST'])
+@login_required
+def esewa_dummy_payment(estimate_id):
+    estimate = Estimate.query.get_or_404(estimate_id)
+    if estimate.user_id != current_user.id:
+        abort(403)
+    if not csrf_is_valid():
+        flash('Your payment form expired. Please try again.', 'error')
+        return redirect(url_for('checkout', estimate_id=estimate.id))
+    if estimate.is_bought:
+        flash('This vehicle has already been purchased.', 'info')
+        return redirect(url_for('profile'))
+    if not request.form.get('esewa_id', '').strip():
+        flash('Enter a dummy eSewa ID to continue.', 'error')
+        return redirect(url_for('checkout', estimate_id=estimate.id))
+
+    learned = record_purchase(estimate, estimate.predicted_price)
+    reference = f"DUMMY-ESEWA-{estimate.id}-{secrets.token_hex(3).upper()}"
+    flash(f'Dummy eSewa payment successful. Reference: {reference}. ' + ('The purchase has also improved the prediction model.' if learned else 'The purchase was saved.'), 'success')
     return redirect(url_for('profile'))
 
 @app.route('/admin')
@@ -807,7 +824,7 @@ def signup():
         login_user(user)
         
         session.pop('_csrf_token', None)
-        flash('Your account has been created. Welcome to AutoValue.', 'success')
+        flash('Your account has been created. Welcome to Car Resell Prediction & Recommendation System.', 'success')
         return redirect(url_for('index'))
 
     return render_page('signup.html', 'signup', form_data=form_data, error=None)
@@ -901,7 +918,14 @@ def predict():
                     predicted_price=price,
                     min_price=min_price,
                     max_price=max_price,
-                    created_at=get_nepal_time()
+                    created_at=get_nepal_time(),
+                    km_driven=user_input['km_driven'],
+                    seller_type=user_input['seller_type'],
+                    owner=user_input['owner'],
+                    mileage=user_input['mileage'],
+                    engine=user_input['engine'],
+                    max_power=user_input['max_power'],
+                    seats=user_input['seats'],
                 )
                 db.session.add(estimate_record)
                 db.session.commit()
