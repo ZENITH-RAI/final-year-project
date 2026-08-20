@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Profile — AutoValue{% endblock %}
-{% block description %}View your AutoValue profile and estimate history.{% endblock %}
+{% block title %}Profile — Car Resell Prediction & Recommendation System{% endblock %}
+{% block description %}View your vehicle estimate history and purchases.{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -163,10 +163,11 @@
             </span>
           </div>
         {% else %}
+          <a class="btn btn--primary" href="{{ url_for('checkout', estimate_id=estimate.id) }}">Buy with eSewa (Demo)</a>
           <form class="buy-form" action="{{ url_for('mark_bought', estimate_id=estimate.id) }}" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <input type="number" name="actual_price" placeholder="Actual price paid (NPR)" required>
-            <button class="btn btn--primary" type="submit">Mark as Bought</button>
+            <button class="btn btn--ghost" type="submit">Record external purchase</button>
           </form>
         {% endif %}
       </div>

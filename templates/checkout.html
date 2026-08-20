@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Dummy eSewa Checkout — Car Resell Prediction & Recommendation System{% endblock %}
+{% block description %}Complete a simulated eSewa payment for your selected vehicle.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .checkout { max-width: 760px; margin: 0 auto; }
+  .checkout__notice { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+  .checkout-card { background: #fff; border: 1px solid #dbe4ee; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 24px rgba(15, 23, 42, .07); }
+  .checkout-card__head { background: #60bb46; color: #fff; padding: 1.35rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .checkout-card__head h1 { font-size: 1.4rem; margin: 0; }
+  .checkout-card__body { padding: 1.5rem; }
+  .order-summary { background: #f8fafc; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; }
+  .order-summary p { margin: .35rem 0; color: #475569; }
+  .order-summary strong { color: #0f172a; }
+  .checkout-total { font-size: 1.4rem; font-weight: 700; color: #166534; margin-top: .75rem !important; }
+  .checkout-label { display: block; font-weight: 600; margin-bottom: .45rem; }
+  .checkout-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: .7rem .85rem; font: inherit; box-sizing: border-box; }
+  .checkout-help { color: #64748b; font-size: .9rem; margin: .45rem 0 1.25rem; }
+  .checkout-actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="wrap section checkout">
+  <p class="checkout__notice"><strong>Demo only:</strong> this is a simulated eSewa checkout. No real payment is processed and no money is transferred.</p>
+  <article class="checkout-card">
+    <div class="checkout-card__head">
+      <h1>eSewa <span style="font-weight:400">Dummy Payment</span></h1>
+      <span>Secure demo checkout</span>
+    </div>
+    <div class="checkout-card__body">
+      <div class="order-summary">
+        <p><strong>Vehicle:</strong> {{ estimate.year }} {{ estimate.brand }} {{ estimate.model }}</p>
+        <p><strong>Specifications:</strong> {{ estimate.fuel }} · {{ estimate.transmission }}</p>
+        <p class="checkout-total">Total: NPR {{ '{:,.0f}'.format(estimate.predicted_price) }}</p>
+      </div>
+      <form action="{{ url_for('esewa_dummy_payment', estimate_id=estimate.id) }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <label class="checkout-label" for="esewa_id">Dummy eSewa ID</label>
+        <input class="checkout-input" id="esewa_id" name="esewa_id" autocomplete="off" placeholder="e.g. 9800000000" required />
+        <p class="checkout-help">Use any non-empty ID for this project demonstration.</p>
+        <div class="checkout-actions">
+          <button class="btn btn--primary" type="submit" style="background:#60bb46; border-color:#60bb46">Pay NPR {{ '{:,.0f}'.format(estimate.predicted_price) }} (Demo)</button>
+          <a class="btn btn--ghost" href="{{ url_for('profile') }}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}
