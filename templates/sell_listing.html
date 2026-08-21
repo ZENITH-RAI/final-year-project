@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Sell {{ estimate.brand }} {{ estimate.model }} — Car Resell Price Prediction and Recommendation System{% endblock %}
+{% block description %}List your predicted vehicle in the system marketplace.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .sell-shell { max-width: 900px; margin: 0 auto; }
+  .sell-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.5rem; align-items: start; }
+  .sell-card { background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 14px; padding: 1.35rem; }
+  .sell-price { font-size: 1.8rem; color: var(--clr-primary); margin: .35rem 0 1rem; }
+  .sell-specs { display: grid; gap: .65rem; margin-top: 1rem; }
+  .sell-specs div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: .55rem; }
+  .sell-specs span { color: var(--clr-text-light); }
+  .sell-form { display: grid; gap: 1rem; }
+  .sell-form label { display: grid; gap: .4rem; font-weight: 600; }
+  .sell-form input, .sell-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--clr-border); border-radius: 9px; padding: .75rem .85rem; font: inherit; background: #fff; }
+  .sell-form textarea { min-height: 110px; resize: vertical; }
+  .sell-help { color: var(--clr-text-light); font-size: .9rem; font-weight: 400; }
+  .sell-actions { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .35rem; }
+  @media (max-width: 760px) { .sell-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="wrap section sell-shell">
+  <header class="page-head">
+    <p style="font-weight:700;color:var(--clr-primary);margin-bottom:.35rem;">List from your saved estimate</p>
+    <h1>Sell {{ estimate.year }} {{ estimate.brand }} {{ estimate.model }}</h1>
+    <p>The AI estimate becomes the listing price. Add only the details a buyer needs to see.</p>
+  </header>
+
+  <div class="sell-grid">
+    <aside class="sell-card">
+      <small>AI estimated selling price</small>
+      <div class="sell-price">NPR {{ '{:,.0f}'.format(estimate.predicted_price) }}</div>
+      <p class="sell-help">This is an estimated resale value, not a guaranteed market price.</p>
+      <div class="sell-specs">
+        <div><span>Year</span><strong>{{ estimate.year }}</strong></div>
+        <div><span>Kilometers</span><strong>{{ '{:,.0f}'.format(estimate.km_driven or 0) }} km</strong></div>
+        <div><span>Fuel</span><strong>{{ estimate.fuel }}</strong></div>
+        <div><span>Transmission</span><strong>{{ estimate.transmission }}</strong></div>
+        <div><span>Owner</span><strong>{{ estimate.owner or '—' }}</strong></div>
+        <div><span>Engine</span><strong>{{ '{:,.0f}'.format(estimate.engine or 0) }} CC</strong></div>
+      </div>
+    </aside>
+
+    <form class="sell-card sell-form" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      <label>
+        Location
+        <input name="location" maxlength="120" required placeholder="e.g. Kathmandu" value="{{ form_data.get('location', '') }}" />
+      </label>
+
+      <label>
+        Contact phone
+        <input name="contact_phone" maxlength="30" required placeholder="e.g. 98XXXXXXXX" value="{{ form_data.get('contact_phone', '') }}" />
+      </label>
+
+      <label>
+        Description
+        <textarea name="description" maxlength="2000" placeholder="Short description of the vehicle">{{ form_data.get('description', '') }}</textarea>
+      </label>
+
+      <label>
+        Condition notes
+        <textarea name="condition_notes" maxlength="1000" placeholder="Service history, recent repairs, visible condition, etc.">{{ form_data.get('condition_notes', '') }}</textarea>
+      </label>
+
+      <label>
+        Car photos
+        <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple />
+        <span class="sell-help">Optional. Up to 6 JPG, PNG, or WebP images.</span>
+      </label>
+
+      <div class="sell-actions">
+        <button class="btn btn--primary" type="submit">List car for sale</button>
+        <a class="btn btn--ghost" href="{{ url_for('profile') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

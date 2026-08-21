@@ -146,15 +146,6 @@ h2 { font-size: 1.75rem; margin-bottom: 1rem; letter-spacing: -0.01em; }
   justify-self: start;
 }
 
-.logo_mark {
-  background: var(--clr-primary);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
-}
-
 .nav {
   display: contents;
 }

@@ -5,18 +5,31 @@ import os
 import secrets
 import csv
 import json
+from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 from io import StringIO
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlsplit
 from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, Response, jsonify
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from flask_migrate import Migrate
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
 from threading import Lock                         
 from extensions import db
 from datetime import datetime
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv()
+
 def get_nepal_time():
     """Returns the current naive datetime converted to Nepal Standard Time (UTC+5:45)."""
     nepal_tz = timezone(timedelta(hours=5, minutes=45))
@@ -25,16 +38,26 @@ def get_nepal_time():
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-development-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:zenith123@localhost:5432/carresell_db"
+    "DATABASE_URL", "postgresql://postgres:Messi.100@localhost:5432/car_resell_db"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024
+
+# Set this to the public HTTPS address of the deployed application (for
+# example, https://example.vercel.app). eSewa must be able to redirect the
+# customer back to this address after checkout.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 
 db.init_app(app)
 migrate = Migrate(app, db)
 
-from models import User, Estimate
+from models import User, Estimate, Listing, ListingImage, Order, Payment
+from services.esewa_service import (
+    EsewaConfigurationError, EsewaVerificationError, check_transaction_status,
+    config as esewa_config, create_payment_payload, decode_success_response, money, verify_response_signature,
+)
 
 DEFAULT_ADMIN_EMAIL = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@gmail.com").strip().lower()
 DEFAULT_ADMIN_PASSWORD = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin@123")
@@ -59,6 +82,20 @@ def csrf_is_valid():
     supplied = request.form.get("csrf_token", "")
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
+
+def payment_callback_url(endpoint, **values):
+    """Build a public callback URL for eSewa without trusting proxy headers."""
+    path = url_for(endpoint, **values)
+    if not PUBLIC_BASE_URL:
+        return url_for(endpoint, _external=True, **values)
+
+    parsed = urlsplit(PUBLIC_BASE_URL)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        raise EsewaConfigurationError(
+            "PUBLIC_BASE_URL must be an absolute base URL, for example https://example.com."
+        )
+    return f"{PUBLIC_BASE_URL}{path}"
+
 def safe_next_url(next_url):
     if next_url and next_url.startswith("/") and not next_url.startswith("//"):
         return next_url
@@ -74,7 +111,7 @@ def ensure_default_admin():
         return admin
 
     admin = User(
-        name="Car Resell Prediction & Recommendation System Administrator",
+        name="Car Resell Price Prediction and Recommendation System Administrator",
         email=DEFAULT_ADMIN_EMAIL,
         is_admin=True,
     )
@@ -429,6 +466,159 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
+LISTING_STATUSES = {'ACTIVE', 'RESERVED', 'SOLD', 'REMOVED'}
+
+
+def listing_image_url(image):
+    return url_for('static', filename=image.image_path) if image else None
+
+
+def validate_listing_form():
+    location = request.form.get('location', '').strip()
+    phone = request.form.get('contact_phone', '').strip()
+    description = request.form.get('description', '').strip()
+    condition_notes = request.form.get('condition_notes', '').strip()
+    errors = []
+    if not location or len(location) > 120:
+        errors.append('Enter a location of 120 characters or fewer.')
+    if not phone or len(phone) > 30 or not all(char.isdigit() or char in '+- ()' for char in phone):
+        errors.append('Enter a valid contact phone number.')
+    if len(description) > 2000 or len(condition_notes) > 1000:
+        errors.append('Description or condition notes are too long.')
+    return errors, location, phone, description, condition_notes
+
+
+def save_listing_images(listing, files):
+    saved = []
+    upload_dir = BASE_DIR / 'static' / 'uploads' / 'listings'
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    for display_order, image in enumerate(files):
+        if not image or not image.filename:
+            continue
+        filename = secure_filename(image.filename)
+        extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if extension not in ALLOWED_IMAGE_EXTENSIONS:
+            raise ValueError('Images must be JPG, PNG, or WebP files.')
+        # A browser MIME type is not authoritative, but rejecting non-images adds a useful boundary.
+        if image.mimetype and not image.mimetype.startswith('image/'):
+            raise ValueError('Only image uploads are allowed.')
+        unique_name = f'{uuid4().hex}.{extension}'
+        image.save(upload_dir / unique_name)
+        saved.append(ListingImage(listing=listing, image_path=f'uploads/listings/{unique_name}', display_order=display_order))
+    return saved
+
+
+def release_listing_if_pending(order, payment_status, order_status='FAILED'):
+    """Release a vehicle only when this unfinished order still owns the reservation."""
+    order.status = order_status
+    if order.payment is not None:
+        order.payment.status = payment_status
+    if order.listing.status == 'RESERVED' and order.listing.buyer_id is None:
+        order.listing.status = 'ACTIVE'
+        order.listing.reserved_at = None
+
+
+def status_field(payload, *names):
+    for name in names:
+        if name in payload:
+            return payload[name]
+    return None
+
+
+def normalized_esewa_status(status):
+    """Normalize the minor spelling variants used by payment providers."""
+    value = str(status or '').strip().upper()
+    return 'CANCELED' if value == 'CANCELLED' else value
+
+
+def validate_esewa_status_for_order(order, status_data):
+    """Ensure eSewa's server-to-server status response belongs to this order."""
+    settings = esewa_config()
+    provider_status = normalized_esewa_status(status_data.get('status'))
+    provider_product = str(status_field(status_data, 'product_code', 'scd') or '')
+    provider_transaction = str(status_field(status_data, 'transaction_uuid', 'pid') or '')
+    provider_amount = status_field(status_data, 'total_amount', 'totalAmount')
+
+    if provider_product != settings['product_code']:
+        raise EsewaVerificationError('The eSewa merchant code does not match this order.')
+    if provider_transaction != order.transaction_uuid:
+        raise EsewaVerificationError('The eSewa transaction ID does not match this order.')
+    if money(provider_amount) != money(order.amount):
+        raise EsewaVerificationError('The eSewa payment amount does not match this order.')
+    return provider_status
+
+
+def save_pending_payment_status(order_id, provider_status, status_data):
+    """Persist a verified non-final eSewa result without changing ownership."""
+    db.session.rollback()
+    try:
+        order = Order.query.filter_by(id=order_id).with_for_update().one()
+        if order.status == 'PENDING_PAYMENT' and order.payment:
+            order.payment.status = provider_status or 'PENDING'
+            order.payment.raw_response = json.dumps({'status_check': status_data}, default=str)
+        db.session.commit()
+        return order
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def finalize_verified_payment(order_id, status_data, callback_data=None):
+    """Idempotently mark an order paid after a verified eSewa status response."""
+    # Flask-Login may already have opened a SQLAlchemy transaction while loading
+    # current_user. Start this critical section from a clean transaction state.
+    db.session.rollback()
+    try:
+        order = Order.query.filter_by(id=order_id).with_for_update().one()
+        listing = Listing.query.filter_by(id=order.listing_id).with_for_update().one()
+        payment = Payment.query.filter_by(order_id=order.id).with_for_update().one()
+
+        if order.status == 'PAID' and payment.status == 'COMPLETE' and listing.status == 'SOLD':
+            db.session.commit()
+            return order
+
+        if order.status != 'PENDING_PAYMENT' or listing.status != 'RESERVED':
+            raise EsewaVerificationError('This order is no longer eligible for payment confirmation.')
+
+        provider_status = validate_esewa_status_for_order(order, status_data)
+        if provider_status != 'COMPLETE':
+            raise EsewaVerificationError(f'eSewa payment is {provider_status or "not complete"}.')
+
+        if callback_data is not None:
+            settings = esewa_config()
+            callback_amount = status_field(callback_data, 'total_amount')
+            if str(callback_data.get('transaction_uuid', '')) != order.transaction_uuid:
+                raise EsewaVerificationError('The eSewa callback transaction does not match this order.')
+            if str(callback_data.get('product_code', '')) != settings['product_code']:
+                raise EsewaVerificationError('The eSewa callback merchant code does not match this order.')
+            if money(callback_amount) != money(order.amount):
+                raise EsewaVerificationError('The eSewa callback amount does not match this order.')
+
+        now = get_nepal_time()
+        payment.status = 'COMPLETE'
+        payment.provider_transaction_code = str(
+            status_field(status_data, 'ref_id', 'refId')
+            or (callback_data or {}).get('transaction_code')
+            or ''
+        )[:100] or None
+        payment.raw_response = json.dumps(
+            {'callback': callback_data, 'status_check': status_data}, default=str
+        )
+        payment.verified_at = now
+        order.status = 'PAID'
+        order.paid_at = now
+        listing.status = 'SOLD'
+        listing.buyer_id = order.buyer_id
+        listing.sold_at = now
+        listing.reserved_at = None
+        db.session.commit()
+        return order
+    except Exception:
+        db.session.rollback()
+        raise
+
 def find_similar_cars(user_input, pred_price, top_n=5):
     if reference_data is None or reference_data.empty:
         return []
@@ -622,36 +812,346 @@ def mark_bought(estimate_id):
         
     return redirect(url_for('profile'))
 
-@app.route('/buy/<int:estimate_id>')
+@app.route('/marketplace')
+def marketplace():
+    query = Listing.query.join(Estimate).filter(Listing.status == 'ACTIVE')
+    filters = {key: request.args.get(key, '').strip() for key in ('brand', 'model', 'fuel', 'transmission', 'year', 'location', 'min_price', 'max_price', 'sort')}
+    if filters['brand']:
+        query = query.filter(Estimate.brand.ilike(f"%{filters['brand']}%"))
+    if filters['model']:
+        query = query.filter(Estimate.model.ilike(f"%{filters['model']}%"))
+    if filters['fuel']:
+        query = query.filter(Estimate.fuel == filters['fuel'])
+    if filters['transmission']:
+        query = query.filter(Estimate.transmission == filters['transmission'])
+    if filters['year'].isdigit():
+        query = query.filter(Estimate.year == int(filters['year']))
+    if filters['location']:
+        query = query.filter(Listing.location.ilike(f"%{filters['location']}%"))
+    if filters['min_price']:
+        try:
+            query = query.filter(Listing.price >= Decimal(filters['min_price']))
+        except InvalidOperation:
+            flash('Ignore invalid minimum price.', 'error')
+    if filters['max_price']:
+        try:
+            query = query.filter(Listing.price <= Decimal(filters['max_price']))
+        except InvalidOperation:
+            flash('Ignore invalid maximum price.', 'error')
+    sort_options = {
+        'price_asc': Listing.price.asc(), 'price_desc': Listing.price.desc(),
+        'year_desc': Estimate.year.desc(), 'newest': Listing.created_at.desc(),
+    }
+    listings = query.order_by(sort_options.get(filters['sort'], Listing.created_at.desc())).all()
+    return render_page('marketplace.html', 'marketplace', listings=listings, filters=filters)
+
+
+@app.route('/marketplace/<int:listing_id>')
+def listing_detail(listing_id):
+    listing = Listing.query.get_or_404(listing_id)
+    buyer_order = None
+    if current_user.is_authenticated:
+        buyer_order = (
+            Order.query.filter_by(listing_id=listing.id, buyer_id=current_user.id)
+            .filter(Order.status.in_(['PENDING_PAYMENT', 'PAID']))
+            .order_by(Order.created_at.desc())
+            .first()
+        )
+    if listing.status != 'ACTIVE':
+        can_view = False
+        if current_user.is_authenticated:
+            can_view = (
+                current_user.is_admin
+                or current_user.id in {listing.seller_id, listing.buyer_id}
+                or buyer_order is not None
+            )
+        if not can_view:
+            abort(404)
+    return render_page('listing_detail.html', 'marketplace', listing=listing, buyer_order=buyer_order)
+
+
+@app.route('/sell/<int:prediction_id>', methods=['GET', 'POST'])
 @login_required
-def checkout(estimate_id):
-    estimate = Estimate.query.get_or_404(estimate_id)
+def sell_prediction(prediction_id):
+    estimate = Estimate.query.get_or_404(prediction_id)
     if estimate.user_id != current_user.id:
         abort(403)
-    if estimate.is_bought:
-        flash('This vehicle has already been purchased.', 'info')
-        return redirect(url_for('profile'))
-    return render_page('checkout.html', 'buy', estimate=estimate)
+    existing = Listing.query.filter_by(prediction_id=estimate.id).first()
+    if existing:
+        flash('This prediction already has a marketplace listing.', 'info')
+        return redirect(url_for('listing_detail', listing_id=existing.id))
+    if request.method == 'POST':
+        if not csrf_is_valid():
+            flash('Your listing form expired. Please try again.', 'error')
+            return redirect(url_for('sell_prediction', prediction_id=estimate.id))
+        errors, location, phone, description, condition_notes = validate_listing_form()
+        images = [image for image in request.files.getlist('images') if image and image.filename]
+        if len(images) > 6:
+            errors.append('Add at most six car images.')
+        if errors:
+            for error in errors:
+                flash(error, 'error')
+            return render_page('sell_listing.html', 'profile', estimate=estimate, form_data=request.form)
+        listing = Listing(prediction_id=estimate.id, seller_id=current_user.id, price=Decimal(str(estimate.predicted_price)).quantize(Decimal('0.01')), location=location, contact_phone=phone, description=description or None, condition_notes=condition_notes or None, status='ACTIVE')
+        try:
+            db.session.add(listing)
+            db.session.flush()
+            db.session.add_all(save_listing_images(listing, images))
+            db.session.commit()
+        except (SQLAlchemyError, ValueError) as error:
+            db.session.rollback()
+            flash(str(error) if isinstance(error, ValueError) else 'Your listing could not be published. Please try again.', 'error')
+            return render_page('sell_listing.html', 'profile', estimate=estimate, form_data=request.form)
+        flash('Your car is now listed in the marketplace.', 'success')
+        return redirect(url_for('listing_detail', listing_id=listing.id))
+    return render_page('sell_listing.html', 'profile', estimate=estimate, form_data={})
 
-@app.route('/buy/<int:estimate_id>/esewa', methods=['POST'])
+
+@app.route('/listing/<int:listing_id>/buy', methods=['POST'])
 @login_required
-def esewa_dummy_payment(estimate_id):
-    estimate = Estimate.query.get_or_404(estimate_id)
-    if estimate.user_id != current_user.id:
+def buy_listing(listing_id):
+    """Create one marketplace order and redirect the buyer to eSewa."""
+    if not csrf_is_valid():
+        flash('Your checkout form expired. Please try again.', 'error')
+        return redirect(url_for('listing_detail', listing_id=listing_id))
+
+    try:
+        # Validate merchant configuration before reserving a vehicle.
+        esewa_config()
+
+        # current_user can trigger SQLAlchemy autobegin. Clear that read-only
+        # transaction before taking the row lock used to prevent double buying.
+        db.session.rollback()
+        listing = Listing.query.filter_by(id=listing_id).with_for_update().one_or_none()
+        if listing is None:
+            abort(404)
+        if listing.seller_id == current_user.id:
+            db.session.rollback()
+            flash('You cannot purchase your own listing.', 'error')
+            return redirect(url_for('listing_detail', listing_id=listing.id))
+        if listing.status != 'ACTIVE':
+            db.session.rollback()
+            flash('This car is no longer available for checkout.', 'info')
+            return redirect(url_for('marketplace'))
+
+        transaction_uuid = f'CRPP-{uuid4().hex[:27]}'
+        order = Order(
+            listing_id=listing.id,
+            buyer_id=current_user.id,
+            seller_id=listing.seller_id,
+            amount=listing.price,
+            status='PENDING_PAYMENT',
+            transaction_uuid=transaction_uuid,
+        )
+        payment = Payment(
+            order=order,
+            provider='ESEWA',
+            transaction_uuid=transaction_uuid,
+            amount=listing.price,
+            status='AWAITING_ESEWA_LOGIN',
+        )
+        listing.status = 'RESERVED'
+        listing.reserved_at = get_nepal_time()
+        db.session.add_all([order, payment])
+        db.session.flush()  # gives order.id for the failure callback URL
+
+        payment_url, payload = create_payment_payload(
+            order,
+            payment_callback_url('esewa_success'),
+            payment_callback_url('esewa_failure', order_id=order.id),
+        )
+        db.session.commit()
+    except EsewaConfigurationError as error:
+        db.session.rollback()
+        flash(str(error), 'error')
+        return redirect(url_for('listing_detail', listing_id=listing_id))
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('Checkout could not be started. Please try again.', 'error')
+        return redirect(url_for('listing_detail', listing_id=listing_id))
+
+    return render_page(
+        'payment_redirect.html',
+        'marketplace',
+        payment_url=payment_url,
+        payload=payload,
+        order=order,
+        esewa_environment=esewa_config()['environment'],
+    )
+
+
+@app.route('/payment/esewa/success')
+@login_required
+def esewa_success():
+    """Verify eSewa's signed callback and confirm it again with the status API."""
+    encoded_data = request.args.get('data', '')
+    order = None
+    try:
+        callback_data = decode_success_response(encoded_data)
+        verify_response_signature(callback_data)
+        if str(callback_data.get('status', '')).upper() != 'COMPLETE':
+            raise EsewaVerificationError('eSewa did not mark this transaction as complete.')
+
+        transaction_uuid = str(callback_data.get('transaction_uuid', ''))
+        order = Order.query.filter_by(transaction_uuid=transaction_uuid).first_or_404()
+        if order.buyer_id != current_user.id:
+            abort(403)
+
+        order_id = order.id
+        order_transaction_uuid = order.transaction_uuid
+        order_amount = order.amount
+        db.session.rollback()
+        status_data = check_transaction_status(order_transaction_uuid, order_amount)
+        provider_status = validate_esewa_status_for_order(order, status_data)
+        if provider_status == 'COMPLETE':
+            completed_order = finalize_verified_payment(order_id, status_data, callback_data)
+        else:
+            # eSewa can redirect the customer before its status API reflects the
+            # completed transaction. Keep the signed success callback pending
+            # instead of incorrectly reporting that the payment failed.
+            pending_order = save_pending_payment_status(order_id, 'PENDING', status_data)
+            flash('eSewa is confirming your payment. Please check the status again shortly.', 'info')
+            return render_page(
+                'payment_result.html', 'marketplace',
+                successful=False, pending=True, order=pending_order,
+            )
+    except (EsewaVerificationError, EsewaConfigurationError) as error:
+        flash(str(error), 'error')
+        return render_page(
+            'payment_result.html', 'marketplace',
+            successful=False, pending=False, order=order,
+        )
+
+    return render_page(
+        'payment_result.html', 'marketplace',
+        successful=True, pending=False, order=completed_order,
+    )
+
+
+@app.route('/payment/esewa/failure/<int:order_id>')
+@login_required
+def esewa_failure(order_id):
+    """Handle eSewa failure/pending redirects without falsely completing a sale."""
+    order = Order.query.get_or_404(order_id)
+    if order.buyer_id != current_user.id:
+        abort(403)
+    if order.status != 'PENDING_PAYMENT':
+        return render_page(
+            'payment_result.html', 'marketplace',
+            successful=(order.status == 'PAID'), pending=False, order=order,
+        )
+
+    transaction_uuid = order.transaction_uuid
+    amount = order.amount
+    db.session.rollback()
+
+    try:
+        status_data = check_transaction_status(transaction_uuid, amount)
+        provider_status = validate_esewa_status_for_order(order, status_data)
+
+        if provider_status == 'COMPLETE':
+            completed_order = finalize_verified_payment(order_id, status_data)
+            flash('Payment was confirmed by eSewa.', 'success')
+            return render_page(
+                'payment_result.html', 'marketplace',
+                successful=True, pending=False, order=completed_order,
+            )
+
+        if provider_status in {'PENDING', 'AMBIGUOUS'}:
+            order = save_pending_payment_status(order_id, provider_status, status_data)
+            return render_page(
+                'payment_result.html', 'marketplace',
+                successful=False, pending=True, order=order,
+            )
+
+        db.session.rollback()
+        locked_order = Order.query.filter_by(id=order_id).with_for_update().one()
+        Listing.query.filter_by(id=locked_order.listing_id).with_for_update().one()
+        if locked_order.status == 'PENDING_PAYMENT':
+            release_listing_if_pending(
+                locked_order,
+                provider_status or 'FAILED',
+                'CANCELLED' if provider_status in {'CANCELED', 'NOT_FOUND'} else 'FAILED',
+            )
+            if locked_order.payment:
+                locked_order.payment.raw_response = json.dumps({'status_check': status_data}, default=str)
+        db.session.commit()
+        order = locked_order
+    except (EsewaVerificationError, EsewaConfigurationError):
+        # If eSewa cannot be reached, do not guess that the payment failed.
+        db.session.rollback()
+        order = Order.query.get_or_404(order_id)
+        return render_page(
+            'payment_result.html', 'marketplace',
+            successful=False, pending=True, order=order,
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        order = Order.query.get_or_404(order_id)
+
+    return render_page(
+        'payment_result.html', 'marketplace',
+        successful=False, pending=False, order=order,
+    )
+
+
+@app.route('/payment/esewa/status/<int:order_id>')
+@login_required
+def esewa_status(order_id):
+    """Let the buyer/admin re-check a pending transaction with eSewa."""
+    order = Order.query.get_or_404(order_id)
+    if not current_user.is_admin and order.buyer_id != current_user.id:
+        abort(403)
+
+    transaction_uuid = order.transaction_uuid
+    amount = order.amount
+    order_status = order.status
+    db.session.rollback()
+
+    try:
+        status_data = check_transaction_status(transaction_uuid, amount)
+        provider_status = validate_esewa_status_for_order(order, status_data)
+
+        if provider_status == 'COMPLETE' and order_status == 'PENDING_PAYMENT':
+            completed_order = finalize_verified_payment(order_id, status_data)
+            flash(f'eSewa payment confirmed for order #{completed_order.id}.', 'success')
+        elif provider_status in {'NOT_FOUND', 'CANCELED'} and order_status == 'PENDING_PAYMENT':
+            db.session.rollback()
+            locked_order = Order.query.filter_by(id=order_id).with_for_update().one()
+            Listing.query.filter_by(id=locked_order.listing_id).with_for_update().one()
+            if locked_order.status == 'PENDING_PAYMENT':
+                release_listing_if_pending(locked_order, provider_status, 'CANCELLED')
+                if locked_order.payment:
+                    locked_order.payment.raw_response = json.dumps({'status_check': status_data}, default=str)
+            db.session.commit()
+            flash('The payment was not completed and the car is available again.', 'info')
+        else:
+            order = save_pending_payment_status(order_id, provider_status, status_data)
+            flash(f'eSewa status: {provider_status or "PENDING"}.', 'info')
+    except (EsewaVerificationError, EsewaConfigurationError) as error:
+        db.session.rollback()
+        flash(str(error), 'error')
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('Payment status could not be updated. Please try again.', 'error')
+
+    return redirect(url_for('profile'))
+
+
+@app.route('/listing/<int:listing_id>/remove', methods=['POST'])
+@login_required
+def remove_listing(listing_id):
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.seller_id != current_user.id:
         abort(403)
     if not csrf_is_valid():
-        flash('Your payment form expired. Please try again.', 'error')
-        return redirect(url_for('checkout', estimate_id=estimate.id))
-    if estimate.is_bought:
-        flash('This vehicle has already been purchased.', 'info')
-        return redirect(url_for('profile'))
-    if not request.form.get('esewa_id', '').strip():
-        flash('Enter a dummy eSewa ID to continue.', 'error')
-        return redirect(url_for('checkout', estimate_id=estimate.id))
-
-    learned = record_purchase(estimate, estimate.predicted_price)
-    reference = f"DUMMY-ESEWA-{estimate.id}-{secrets.token_hex(3).upper()}"
-    flash(f'Dummy eSewa payment successful. Reference: {reference}. ' + ('The purchase has also improved the prediction model.' if learned else 'The purchase was saved.'), 'success')
+        flash('Your form expired. Please try again.', 'error')
+    elif listing.status != 'ACTIVE':
+        flash('Only active listings can be removed.', 'error')
+    else:
+        listing.status = 'REMOVED'
+        db.session.commit()
+        flash('Listing removed from the marketplace.', 'success')
     return redirect(url_for('profile'))
 
 @app.route('/admin')
@@ -668,12 +1168,18 @@ def admin_dashboard():
     avg_price = f"NPR {int(avg_price):,}" if avg_price else "NPR 0"
     
     recent_estimates = Estimate.query.order_by(Estimate.created_at.desc()).limit(10).all()
+    marketplace_summary = {
+        'active': Listing.query.filter_by(status='ACTIVE').count(),
+        'sold': Listing.query.filter_by(status='SOLD').count(),
+        'transactions': Order.query.count(),
+    }
     return render_page('admin.html', 'admin',
                        total_users=total_users,
                        total_preds=total_preds,
                        today_preds=today_preds,
                        avg_price=avg_price,
-                       recent_estimates=recent_estimates)
+                       recent_estimates=recent_estimates,
+                       marketplace_summary=marketplace_summary)
 
 @app.route('/admin/users')
 @admin_required
@@ -686,6 +1192,19 @@ def admin_users():
 def admin_predictions():
     estimates = Estimate.query.order_by(Estimate.id.asc()).all()
     return render_page('admin_records.html', 'admin', view='predictions', estimates=estimates)
+
+@app.route('/admin/listings')
+@admin_required
+def admin_listings():
+    listings = Listing.query.order_by(Listing.created_at.desc()).all()
+    return render_page('admin_marketplace.html', 'admin', listings=listings, orders=[])
+
+
+@app.route('/admin/transactions')
+@admin_required
+def admin_transactions():
+    orders = Order.query.order_by(Order.created_at.desc()).all()
+    return render_page('admin_marketplace.html', 'admin', listings=[], orders=orders)
 
 @app.route('/admin/export')
 @admin_required
@@ -824,7 +1343,7 @@ def signup():
         login_user(user)
         
         session.pop('_csrf_token', None)
-        flash('Your account has been created. Welcome to Car Resell Prediction & Recommendation System.', 'success')
+        flash('Your account has been created. Welcome to Car Resell Price Prediction and Recommendation System.', 'success')
         return redirect(url_for('index'))
 
     return render_page('signup.html', 'signup', form_data=form_data, error=None)
@@ -834,11 +1353,13 @@ def signup():
 def profile():
     try:
         estimates = current_user.estimates.order_by(Estimate.created_at.desc()).all()
+        listings = Listing.query.filter_by(seller_id=current_user.id).order_by(Listing.created_at.desc()).all()
+        purchases = Order.query.filter_by(buyer_id=current_user.id).order_by(Order.created_at.desc()).all()
     except SQLAlchemyError:
         db.session.rollback()
-        estimates = []
+        estimates, listings, purchases = [], [], []
         flash('We could not load your estimate history. Please try again.', 'error')
-    return render_page('profile.html', 'profile', estimates=estimates)
+    return render_page('profile.html', 'profile', estimates=estimates, listings=listings, purchases=purchases)
 
 @app.route('/logout', methods=['POST'])
 @login_required
@@ -906,6 +1427,7 @@ def predict():
         similar_cars = find_similar_cars(user_input, price)
 
         save_error = None
+        estimate_record = None
         if current_user.is_authenticated:
             try:
                 estimate_record = Estimate(
@@ -936,7 +1458,8 @@ def predict():
         return render_estimate_page(
             price=formatted_price, min_price=formatted_min, max_price=formatted_max,
             similar_cars=similar_cars, error=None, save_error=save_error, form_data=form_data,
-            estimate_saved=current_user.is_authenticated and save_error is None
+            estimate_saved=current_user.is_authenticated and save_error is None,
+            estimate_record=estimate_record
         )
     
     except Exception as e:

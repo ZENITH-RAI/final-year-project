@@ -1,8 +1,7 @@
 <header class="site-header">
   <div class="site-header-inner">
     <a class="logo" href="{{ url_for('admin_dashboard') if current_user.is_authenticated and current_user.is_admin else url_for('index') }}">
-      <span class="logo_mark" aria-hidden="true">AV</span>
-      AutoValue
+      Car Resell Price Prediction and Recommendation System
     </a>
     
     {% if not (current_user.is_authenticated and current_user.is_admin) %}
@@ -18,6 +17,7 @@
       <div class="nav__primary">
         <a href="{{ url_for('index') }}" {% if active_page in ['home'] %}aria-current="page"{% endif %}>Home</a>
         <a href="{{ url_for('estimate') }}" {% if active_page in ['estimate'] %}aria-current="page"{% endif %}>Estimator</a>
+        <a href="{{ url_for('marketplace') }}" {% if active_page in ['marketplace'] %}aria-current="page"{% endif %}>Marketplace</a>
         <a href="{{ url_for('metrics') }}" {% if active_page in ['metrics'] %}aria-current="page"{% endif %}>Model Metrics</a>
         <a href="{{ url_for('about') }}" {% if active_page in ['about'] %}aria-current="page"{% endif %}>About</a>
       </div>

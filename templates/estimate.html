@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Price estimator — AutoValue{% endblock %}
+{% block title %}Price estimator — Car Resell Price Prediction and Recommendation System{% endblock %}
 {% block description %}Enter your used car details and get a price estimate. Search brand and model as you type.{% endblock %}
 
 {% block extra_css %}
@@ -301,6 +301,19 @@
           </div>
       </div>
 
+      <section class="marketplace-cta" aria-label="Sell this estimated car">
+        <div>
+          <p class="marketplace-cta__eyebrow">Ready to sell?</p>
+          <h4>AI Estimated Selling Price: {{ price }}</h4>
+          <p>Your estimate is a guide, not a guaranteed market value. Add photos and listing details before publishing.</p>
+        </div>
+        {% if current_user.is_authenticated and estimate_record %}
+        <a class="btn btn--primary" href="{{ url_for('sell_prediction', prediction_id=estimate_record.id) }}">Sell at {{ price }}</a>
+        {% elif not current_user.is_authenticated %}
+        <a class="btn btn--primary" href="{{ url_for('login', next=url_for('estimate')) }}">Log in to sell this car</a>
+        {% endif %}
+      </section>
+
       <h4>Similar Cars from Market</h4>
       {% if similar_cars %}
       <div class="results-grid">
@@ -360,7 +373,7 @@
 <script>
   (function () {
     var prompt = document.querySelector('[data-guest-prompt]');
-    if (!prompt || sessionStorage.getItem('autovalue-estimate-prompt-seen')) return;
+    if (!prompt || sessionStorage.getItem('car-resell-estimate-prompt-seen')) return;
 
     if (typeof prompt.showModal === 'function') {
       prompt.showModal();
@@ -369,7 +382,7 @@
     }
 
     prompt.querySelector('[data-continue-guest]').addEventListener('click', function () {
-      sessionStorage.setItem('autovalue-estimate-prompt-seen', 'true');
+      sessionStorage.setItem('car-resell-estimate-prompt-seen', 'true');
       prompt.close();
     });
   }());
