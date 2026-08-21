@@ -1,0 +1,38 @@
+stateDiagram-v2
+    [*] --> POST_predict
+    
+    state "Security & Validation Phase" as Phase1 {
+        POST_predict --> VerifyCSRFToken
+        VerifyCSRFToken --> CSRF_Valid : Match
+        VerifyCSRFToken --> FormError : Mismatch
+        
+        CSRF_Valid --> ValidateCatalog
+        ValidateCatalog --> ValidateNumericBounds
+        ValidateNumericBounds --> ValidationPassed : Clean Data
+        ValidateNumericBounds --> FormError : Invalid Data
+    }
+    
+    state "Machine Learning Phase" as Phase2 {
+        ValidationPassed --> FormatDataFrame
+        FormatDataFrame --> AcquireThreadLock
+        
+        AcquireThreadLock --> FeatureEngineering : pipeline.transform()
+        note right of FeatureEngineering: Calculates car_age, power_per_cc, is_luxury
+        
+        FeatureEngineering --> ModelPrediction : model.predict()
+        ModelPrediction --> InverseLogTransform : np.expm1()
+        InverseLogTransform --> ReleaseThreadLock
+    }
+    
+    state "Post-Processing Phase" as Phase3 {
+        ReleaseThreadLock --> CalculateBounds : +/- MAE
+        CalculateBounds --> FindSimilarCars : K-Nearest/Heuristic
+        
+        FindSimilarCars --> CheckAuthStatus
+        CheckAuthStatus --> DB_Save : Is Authenticated
+        CheckAuthStatus --> RenderTemplate : Is Guest
+        DB_Save --> RenderTemplate
+    }
+    
+    FormError --> RenderTemplate : Pass Error Message
+    RenderTemplate --> [*]

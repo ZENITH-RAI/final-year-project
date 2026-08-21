@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant Router as Flask Routes
+    participant DB as SQLAlchemy (PostgreSQL)
+    participant ML as SGDRegressor (model_instance)
+    participant CSV as UsedCars.csv (Disk)
+
+    User->>Router: POST /estimate/{id}/buy (actual_price)
+    Router->>Router: csrf_is_valid()
+    
+    Router->>DB: Query Estimate by ID
+    DB-->>Router: return estimate_record
+    
+    alt is unauthorized or already bought
+        Router-->>User: 403 / Redirect (Error)
+    else is valid
+        Router->>DB: estimate.is_bought = True
+        Router->>DB: estimate.actual_price = actual_price
+        Router->>DB: db.session.commit()
+        
+        rect rgb(40, 40, 40)
+            note right of Router: Critical Section (Thread Locked)
+            Router->>ML: Acquire model_lock
+            Router->>Router: pipeline.transform(user_df)
+            Router->>ML: model.partial_fit(X_new, log(actual_price))
+            ML-->>ML: Update weights (fine_tune_lr = lr * 0.05)
+            Router->>ML: Release model_lock
+        end
+        
+        Router->>CSV: append new row to dataset
+        Router-->>User: Redirect to Profile (Success Flash)
+    end

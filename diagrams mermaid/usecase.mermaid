@@ -1,0 +1,47 @@
+flowchart LR
+ User["User"]
+ subgraph SYSTEM["Car Resale Price Prediction System"]
+ direction TB
+ UC1(["Register"])
+ UC2(["Login"])
+ UC3(["Predict Car Price"])
+ UC4(["View Prediction History"])
+ UC5(["List Car for Sale"])
+ UC6(["Browse Marketplace"])
+ UC7(["View Car Details"])
+ UC8(["Buy Car"])
+ UC9(["Pay via eSewa"])
+ UC10(["View Admin Dashboard"])
+ UC11(["Manage Users, Predictions & Transactions"])
+ UC12(["Logout"])
+ UC1 ~~~ UC2
+ UC2 ~~~ UC3
+ UC3 ~~~ UC4
+ UC4 ~~~ UC5
+ UC5 ~~~ UC6
+ UC6 ~~~ UC7
+ UC7 ~~~ UC8
+ UC8 ~~~ UC9
+ UC9 ~~~ UC10
+ UC10 ~~~ UC11
+ UC11 ~~~ UC12
+ end
+ Admin["Admin"]
+ Esewa["eSewa"]
+ User --- UC1
+ User --- UC2
+ User --- UC3
+ User --- UC4
+ User --- UC5
+ User --- UC6
+ User --- UC7
+ User --- UC8
+ User --- UC9
+ User --- UC12
+ Admin --- UC2
+ Admin --- UC10
+ Admin --- UC11
+ Admin --- UC12
+ Esewa --- UC9
+ UC5 -.->|after prediction| UC3
+ UC8 -.->|includes| UC9
