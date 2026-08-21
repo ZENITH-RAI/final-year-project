@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Marketplace — Car Resell Price Prediction and Recommendation System{% endblock %}
+{% block description %}Browse used vehicles listed from system price estimates.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .marketplace-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .75rem; padding: 1rem; background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; margin-bottom: 1.5rem; }
+  .marketplace-filters input, .marketplace-filters select { width: 100%; box-sizing: border-box; border: 1px solid var(--clr-border); border-radius: 8px; padding: .7rem .75rem; background: #fff; font: inherit; color: var(--clr-text); }
+  .marketplace-filters .btn { justify-content: center; }
+  .listing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.15rem; }
+  .listing-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 13px; overflow: hidden; display: flex; flex-direction: column; }
+  .listing-card img, .listing-card__image { width: 100%; aspect-ratio: 16/10; object-fit: cover; background: #e2e8f0; }
+  .listing-card__image--empty { display: grid; place-items: center; color: #64748b; }
+  .listing-card__body { padding: 1rem; display: grid; gap: .45rem; flex: 1; }
+  .listing-card__body h2, .listing-card__body p { margin: 0; }
+  .listing-card__body strong { font-size: 1.25rem; margin-top: .3rem; }
+  .listing-card__body small { color: var(--clr-text-light); }
+  .listing-card__location { color: var(--clr-primary); font-size: .85rem; font-weight: 700; }
+  .empty-state { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; padding: 2rem; text-align: center; }
+  @media (max-width: 980px) { .marketplace-filters { grid-template-columns: repeat(3,1fr); } .listing-grid { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 620px) { .marketplace-filters, .listing-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wrap section marketplace">
+  <header class="page-head">
+    <h1>Used car marketplace</h1>
+    <p>Browse owner-listed vehicles priced from their saved system estimate.</p>
+  </header>
+
+  <form class="marketplace-filters" method="get">
+    <input name="brand" value="{{ filters.brand }}" placeholder="Brand" />
+    <input name="model" value="{{ filters.model }}" placeholder="Model" />
+    <input type="number" min="0" name="min_price" value="{{ filters.min_price }}" placeholder="Min price" />
+    <input type="number" min="0" name="max_price" value="{{ filters.max_price }}" placeholder="Max price" />
+    <select name="fuel">
+      <option value="">Any fuel</option>
+      {% for value in ['Petrol', 'Diesel', 'CNG', 'LPG'] %}<option value="{{ value }}" {% if filters.fuel == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+    </select>
+    <select name="transmission">
+      <option value="">Any transmission</option>
+      {% for value in ['Manual', 'Automatic'] %}<option value="{{ value }}" {% if filters.transmission == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+    </select>
+    <input type="number" name="year" value="{{ filters.year }}" placeholder="Year" />
+    <input name="location" value="{{ filters.location }}" placeholder="Location" />
+    <select name="sort">
+      <option value="newest" {% if filters.sort in ['', 'newest'] %}selected{% endif %}>Newest</option>
+      <option value="price_asc" {% if filters.sort == 'price_asc' %}selected{% endif %}>Price low to high</option>
+      <option value="price_desc" {% if filters.sort == 'price_desc' %}selected{% endif %}>Price high to low</option>
+      <option value="year_desc" {% if filters.sort == 'year_desc' %}selected{% endif %}>Newest vehicle year</option>
+    </select>
+    <button class="btn btn--primary" type="submit">Apply filters</button>
+  </form>
+
+  {% if listings %}
+  <div class="listing-grid">
+    {% for listing in listings %}
+    <article class="listing-card">
+      {% if listing.images %}
+        <img src="{{ url_for('static', filename=listing.images[0].image_path) }}" alt="{{ listing.prediction.brand }} {{ listing.prediction.model }}" />
+      {% else %}
+        <div class="listing-card__image listing-card__image--empty">No photo yet</div>
+      {% endif %}
+      <div class="listing-card__body">
+        <p class="listing-card__location">{{ listing.location }}</p>
+        <h2>{{ listing.prediction.brand }} {{ listing.prediction.model }}</h2>
+        <p>{{ listing.prediction.year }} · {{ listing.prediction.fuel }} · {{ listing.prediction.transmission }}</p>
+        <p>{{ '{:,.0f}'.format(listing.prediction.km_driven or 0) }} km</p>
+        <strong>NPR {{ '{:,.0f}'.format(listing.price) }}</strong>
+        <small>Seller: {{ listing.seller.name }}</small>
+        <a class="btn btn--ghost" href="{{ url_for('listing_detail', listing_id=listing.id) }}">View details</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h2>No active listings match those filters.</h2>
+    <p>Try broadening your search, or estimate a car and list it for sale.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

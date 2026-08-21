@@ -1,4 +1,4 @@
-{% extends "base.html" %} {% block title %}Admin Dashboard — AutoValue{%
+{% extends "base.html" %} {% block title %}Admin Dashboard — Car Resell Price Prediction and Recommendation System{%
 endblock %} {% block body_class %}bg-light{% endblock %} {% block extra_css %}
 <link
   href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
@@ -54,6 +54,30 @@ endblock %} {% block body_class %}bg-light{% endblock %} {% block extra_css %}
         <h6>Average Price Predicted</h6>
         <h4>{{ avg_price }}</h4>
       </div>
+    </div>
+  </div>
+
+  <div class="row text-center mb-4">
+    <div class="col-md-4">
+      <a href="{{ url_for('admin_listings') }}" class="card p-3 shadow-sm bg-white text-decoration-none text-dark h-100">
+        <h6>Active Marketplace Listings</h6>
+        <h4>{{ marketplace_summary.active }}</h4>
+        <small class="text-primary">View marketplace listings</small>
+      </a>
+    </div>
+    <div class="col-md-4">
+      <a href="{{ url_for('admin_listings') }}" class="card p-3 shadow-sm bg-white text-decoration-none text-dark h-100">
+        <h6>Sold Vehicles</h6>
+        <h4>{{ marketplace_summary.sold }}</h4>
+        <small class="text-primary">Review sold listings</small>
+      </a>
+    </div>
+    <div class="col-md-4">
+      <a href="{{ url_for('admin_transactions') }}" class="card p-3 shadow-sm bg-white text-decoration-none text-dark h-100">
+        <h6>Marketplace Orders</h6>
+        <h4>{{ marketplace_summary.transactions }}</h4>
+        <small class="text-primary">View eSewa transactions</small>
+      </a>
     </div>
   </div>
 

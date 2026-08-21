@@ -1,0 +1,42 @@
+classDiagram
+    class `app_state : FlaskApplication` {
+        CURRENT_YEAR = 2026
+        training_samples_count = 6482
+        feature_count = 24
+        model_metrics = {"R2": 0.8542, "MAE": 125000.0, "MAPE": "12.5%"}
+    }
+
+    class `current_user : User` {
+        id = 14
+        name = "Test User"
+        email = "test@example.com"
+        is_admin = False
+    }
+
+    class `active_estimate : Estimate` {
+        id = 1042
+        brand = "Maruti"
+        model = "Swift Dzire"
+        year = 2014
+        predicted_price = 1450000.00
+        min_price = 1325000.00
+        max_price = 1575000.00
+        is_bought = False
+    }
+
+    class `pipeline_instance : FullPipeline` {
+        feature_columns = ['car_age', 'km_per_year', 'is_7_seater', 'engine_power_ratio', 'power_per_cc', 'is_luxury', ...]
+        luxury_brands = ['BMW', 'Audi', 'Mercedes-Benz', 'Jaguar', 'Land', 'Volvo']
+    }
+
+    class `model_instance : SGDRegressor` {
+        lr = 0.01
+        epochs = 450
+        l2 = 0.01
+        batch_size = 32
+        intercept_ = 14.234
+    }
+
+    `app_state : FlaskApplication` --> `pipeline_instance : FullPipeline` : holds reference
+    `app_state : FlaskApplication` --> `model_instance : SGDRegressor` : holds reference
+    `current_user : User` --> `active_estimate : Estimate` : associated via user_id

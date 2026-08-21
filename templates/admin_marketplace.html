@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Marketplace Admin — Car Resell Price Prediction and Recommendation System{% endblock %}
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5 wrap">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="mb-1">Marketplace Admin</h2>
+      <p class="text-secondary mb-0">Review listings and eSewa-backed marketplace orders.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('admin_listings') }}">Listings</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('admin_transactions') }}">Transactions</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  {% if listings %}
+  <div class="table-responsive bg-white border rounded shadow-sm">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>ID</th><th>Vehicle</th><th>Seller</th><th>Price</th><th>Status</th><th>Buyer</th><th>Listed</th></tr></thead>
+      <tbody>
+      {% for listing in listings %}
+        <tr>
+          <td>#{{ listing.id }}</td>
+          <td><a href="{{ url_for('listing_detail', listing_id=listing.id) }}">{{ listing.prediction.year }} {{ listing.prediction.brand }} {{ listing.prediction.model }}</a></td>
+          <td>{{ listing.seller.name }}</td>
+          <td>NPR {{ '{:,.0f}'.format(listing.price) }}</td>
+          <td>{{ listing.status }}</td>
+          <td>{{ listing.buyer.name if listing.buyer else '—' }}</td>
+          <td>{{ listing.created_at.strftime('%d %b %Y') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif orders %}
+  <div class="table-responsive bg-white border rounded shadow-sm">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>Order</th><th>Vehicle</th><th>Buyer</th><th>Seller</th><th>Amount</th><th>Order status</th><th>eSewa</th><th>Reference</th><th>Date</th></tr></thead>
+      <tbody>
+      {% for order in orders %}
+        <tr>
+          <td>#{{ order.id }}</td>
+          <td>{{ order.listing.prediction.brand }} {{ order.listing.prediction.model }}</td>
+          <td>{{ order.buyer.name }}</td>
+          <td>{{ order.listing.seller.name }}</td>
+          <td>NPR {{ '{:,.0f}'.format(order.amount) }}</td>
+          <td>{{ order.status|replace('_', ' ')|title }}</td>
+          <td>{{ order.payment.status if order.payment else '—' }}</td>
+          <td>{{ order.payment.provider_transaction_code if order.payment and order.payment.provider_transaction_code else '—' }}</td>
+          <td>{{ order.created_at.strftime('%d %b %Y %H:%M') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="alert alert-light border">No records found.</div>
+  {% endif %}
+</div>
+{% endblock %}

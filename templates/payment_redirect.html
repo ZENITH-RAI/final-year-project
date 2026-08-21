@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Redirecting to eSewa — Car Resell Price Prediction and Recommendation System{% endblock %}
+{% block description %}Continue to eSewa to complete your marketplace payment.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .pay-redirect { max-width: 680px; margin: 0 auto; text-align: center; }
+  .pay-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 14px; padding: 2rem; }
+  .esewa-mark { width: 58px; height: 58px; border-radius: 14px; display: grid; place-items: center; margin: 0 auto 1rem; background: #60bb46; color: #fff; font-weight: 800; font-size: 1.15rem; }
+  .pay-amount { font-size: 1.8rem; font-weight: 750; margin: .7rem 0; }
+  .uat-note { text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; margin: 1.25rem 0; }
+  .uat-note code { background: #fff; padding: .1rem .3rem; border-radius: 4px; }
+  .pay-form { margin-top: 1.2rem; }
+  .payment-steps { text-align:left; margin:1.25rem auto; max-width:430px; padding-left:1.3rem; }
+  .payment-steps li { margin:.55rem 0; }
+  .payment-security { color:var(--clr-text-light); font-size:.9rem; margin-top:1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="wrap section pay-redirect">
+  <article class="pay-card">
+    <div class="esewa-mark">eS</div>
+    <h1>Sign in securely with eSewa</h1>
+    <p>Order #{{ order.id }} · {{ order.listing.prediction.year }} {{ order.listing.prediction.brand }} {{ order.listing.prediction.model }}</p>
+    <div class="pay-amount">NPR {{ '{:,.2f}'.format(order.amount) }}</div>
+    <p style="color:var(--clr-text-light)">You will be redirected to eSewa's official login page to authenticate and approve this payment.</p>
+
+    <ol class="payment-steps">
+      <li>Sign in with your eSewa ID on eSewa's website.</li>
+      <li>Confirm the amount and enter the verification token sent by eSewa.</li>
+      <li>Return here while we securely verify the transaction.</li>
+    </ol>
+
+    {% if esewa_environment == 'uat' %}
+    <div class="uat-note">
+      <strong>eSewa UAT test login</strong>
+      <p style="margin:.45rem 0 0">ID: <code>9806800001</code> · Password: <code>Nepal@123</code> · Token: <code>123456</code></p>
+      <small>These are eSewa's public testing credentials, not production credentials.</small>
+    </div>
+    {% endif %}
+
+    <form id="esewa-payment-form" class="pay-form" action="{{ payment_url }}" method="post">
+      {% for key, value in payload.items() %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}" />
+      {% endfor %}
+      <button class="btn btn--primary" type="submit" style="background:#60bb46;border-color:#60bb46">Open secure eSewa login</button>
+    </form>
+    <p class="payment-security">Never enter your eSewa password, PIN, or verification token on this website—only on eSewa.</p>
+    <p style="margin-top:1rem"><a href="{{ url_for('esewa_failure', order_id=order.id) }}">Cancel checkout</a></p>
+  </article>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.setTimeout(function () {
+    var form = document.getElementById('esewa-payment-form');
+    if (form) form.submit();
+  }, 1500);
+</script>
+{% endblock %}

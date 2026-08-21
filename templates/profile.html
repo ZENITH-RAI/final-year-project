@@ -1,201 +1,43 @@
 {% extends "base.html" %}
-
-{% block title %}Profile — Car Resell Prediction & Recommendation System{% endblock %}
-{% block description %}View your vehicle estimate history and purchases.{% endblock %}
-
+{% block title %}My Account — Car Resell Price Prediction and Recommendation System{% endblock %}
 {% block extra_css %}
 <style>
-  /* Profile Header */
-  .profile-header {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 3rem;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--clr-border, #e5e7eb);
-  }
-  .profile-avatar {
-    width: 64px;
-    height: 64px;
-    background-color: var(--clr-primary, #2563eb);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    font-weight: 700;
-    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-  }
-  .profile-info h1 { margin-bottom: 0.25rem; font-size: 2rem; }
-  .profile-info p { color: var(--clr-text-light, #6b7280); font-size: 0.95rem; margin: 0; }
-
-  /* History Panel Header */
-  .history-panel {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-    gap: 1rem;
-  }
-  .history-panel h2 { margin-bottom: 0.25rem; }
-  .history-panel p { color: var(--clr-text-light, #6b7280); margin: 0; }
-
-  /* History Cards */
-  .history-list { display: grid; gap: 1.5rem; }
-  .history-item {
-    background: var(--clr-surface, #ffffff);
-    border: 1px solid var(--clr-border, #e2e8f0);
-    border-radius: 12px;
-    padding: 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 1.5rem;
-    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  .history-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
-  }
-  
-  /* Details Section */
-  .history-item__details { flex: 1; min-width: 280px; }
-  .history-item__details h3 { margin-bottom: 0.25rem; font-size: 1.25rem; }
-  .history-item__details > p { color: var(--clr-text-light, #6b7280); margin-bottom: 1rem; font-size: 0.95rem; }
-
-  /* Price Display */
-  .history-item__price {
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-  .price-amount { font-size: 1.5rem; font-weight: 700; color: var(--clr-text, #1e293b); }
-  .price-date { font-size: 0.85rem; color: var(--clr-text-light, #64748b); margin-top: 0.25rem; }
-
-  /* Bought Status Box */
-  .status-bought {
-    background-color: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    padding: 1rem 1.25rem;
-    border-radius: 8px;
-    margin-top: 0.5rem;
-  }
-  .status-bought strong { color: #166534; display: block; margin-bottom: 0.25rem; font-size: 1.05rem; }
-  .status-bought span { font-size: 0.9rem; color: #15803d; }
-
-  /* Modernized Input Form */
-  .buy-form {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .buy-form input {
-    flex-grow: 1;
-    min-width: 200px;
-    padding: 0.6rem 1rem;
-    border: 1px solid var(--clr-border, #cbd5e1);
-    border-radius: 8px;
-    font-size: 0.95rem;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .buy-form input:focus {
-    outline: none;
-    border-color: var(--clr-primary, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-  }
-  
-  .profile-actions { margin-top: 3rem; text-align: center; }
+  .dashboard { max-width: 1100px; margin: 0 auto; }
+  .dashboard__header { display:flex; gap:1rem; align-items:center; margin-bottom:1.5rem; }
+  .profile-avatar { width:54px; height:54px; border-radius:50%; display:grid; place-items:center; background:var(--clr-primary); color:#fff; font-weight:800; font-size:1.25rem; }
+  .dashboard__header h1, .dashboard__header p { margin:.15rem 0; }
+  .dashboard__header p { color:var(--clr-text-light); }
+  .dashboard-section { background:#fff; border:1px solid var(--clr-border); border-radius:14px; padding:1.2rem; margin-bottom:1.2rem; }
+  .dashboard-section__head { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-bottom:1rem; }
+  .dashboard-section__head h2, .dashboard-section__head p { margin:.15rem 0; }
+  .dashboard-section__head p { color:var(--clr-text-light); }
+  .dashboard-table { overflow-x:auto; }
+  .dashboard-table table { width:100%; border-collapse:collapse; min-width:720px; }
+  .dashboard-table th, .dashboard-table td { text-align:left; padding:.8rem .65rem; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+  .dashboard-table th { font-size:.82rem; color:var(--clr-text-light); text-transform:uppercase; letter-spacing:.04em; }
+  .dashboard-table small { display:block; color:var(--clr-text-light); margin-top:.3rem; }
+  .status-badge { display:inline-flex; padding:.28rem .55rem; border-radius:999px; background:#e2e8f0; font-size:.78rem; font-weight:700; }
+  .status-badge--active, .status-badge--paid { background:#dcfce7; color:#166534; }
+  .status-badge--reserved, .status-badge--pending_payment { background:#fef3c7; color:#92400e; }
+  .status-badge--sold { background:#dbeafe; color:#1e40af; }
+  .status-badge--failed, .status-badge--cancelled { background:#fee2e2; color:#991b1b; }
+  .inline-form { display:inline; margin-left:.6rem; }
+  .inline-form button { border:0; background:none; padding:0; color:#b91c1c; cursor:pointer; font:inherit; }
+  .estimate-history { display:grid; gap:.75rem; }
+  .estimate-history__item { display:grid; grid-template-columns:1.2fr .8fr auto; gap:1rem; align-items:center; padding:.9rem; border:1px solid #e2e8f0; border-radius:10px; }
+  .estimate-history__item h3, .estimate-history__item p { margin:.15rem 0; }
+  .estimate-history__item p, .estimate-history__item small { color:var(--clr-text-light); }
+  .estimate-history__item strong, .estimate-history__item small { display:block; }
+  .profile-actions { margin-top:1rem; }
+  @media(max-width:760px){ .dashboard-section__head{align-items:flex-start;flex-direction:column}.estimate-history__item{grid-template-columns:1fr} }
 </style>
 {% endblock %}
-
 {% block content %}
-<div class="wrap section section--tight">
-  
-  <header class="profile-header">
-    <div class="profile-avatar" aria-hidden="true">
-      {{ current_user.name[:1] | upper }}
-    </div>
-    <div class="profile-info">
-      <h1>{{ current_user.name }}</h1>
-      <p>{{ current_user.email }} &middot; Member since {{ current_user.created_at.strftime('%B %Y') }}</p>
-    </div>
-  </header>
-
-  <section class="history-panel" aria-labelledby="history-title">
-    <div>
-      <h2 id="history-title">Estimate History</h2>
-      <p>{{ estimates|length }} saved estimate{{ '' if estimates|length == 1 else 's' }}</p>
-    </div>
-    <a class="btn btn--primary" href="{{ url_for('estimate') }}">
-      <svg style="margin-right: 0.5rem;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-      </svg>
-      New estimate
-    </a>
-  </section>
-  
-  {% if estimates %}
-  <section class="history-list" aria-label="Saved estimates">
-    {% for estimate in estimates %}
-    <article class="history-item">
-      <div class="history-item__details">
-        <h3>{{ estimate.year }} {{ estimate.brand }} {{ estimate.model }}</h3>
-        <p>{{ estimate.transmission }} &middot; {{ estimate.fuel }}</p>
-        
-        {% if estimate.is_bought %}
-          <div class="status-bought">
-            <strong>Bought for: NPR {{ '{:,.0f}'.format(estimate.actual_price) }}</strong>
-            <span>
-              {% set diff = estimate.actual_price - estimate.predicted_price %}
-              {% if diff > 0 %}
-                You paid NPR {{ '{:,.0f}'.format(diff) }} more than predicted.
-              {% elif diff < 0 %}
-                You paid NPR {{ '{:,.0f}'.format(diff * -1) }} less than predicted!
-              {% else %}
-                You paid exactly the predicted price!
-              {% endif %}
-            </span>
-          </div>
-        {% else %}
-          <a class="btn btn--primary" href="{{ url_for('checkout', estimate_id=estimate.id) }}">Buy with eSewa (Demo)</a>
-          <form class="buy-form" action="{{ url_for('mark_bought', estimate_id=estimate.id) }}" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-            <input type="number" name="actual_price" placeholder="Actual price paid (NPR)" required>
-            <button class="btn btn--ghost" type="submit">Record external purchase</button>
-          </form>
-        {% endif %}
-      </div>
-      
-      <div class="history-item__price">
-        <span class="price-amount">NPR {{ '{:,.0f}'.format(estimate.predicted_price) }}</span>
-        <time class="price-date" datetime="{{ estimate.created_at.isoformat() }}">{{ estimate.created_at.strftime('%d %b %Y') }}</time>
-      </div>
-    </article>
-    {% endfor %}
-  </section>
-  {% else %}
-  <section class="history-empty" aria-label="Saved estimates" style="text-align: center; padding: 4rem 1rem; border: 2px dashed var(--clr-border, #e2e8f0); border-radius: 12px; color: var(--clr-text-light, #64748b);">
-    <svg style="margin: 0 auto 1rem auto; display: block; color: #cbd5e1;" xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-    </svg>
-    <p style="font-size: 1.1rem; margin: 0;">You have not saved any estimates yet.</p>
-  </section>
-  {% endif %}
-  
-  <form class="profile-actions" action="{{ url_for('logout') }}" method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-    <button class="btn btn--ghost" type="submit">
-      <svg style="margin-right: 0.5rem;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-      </svg>
-      Log out
-    </button>
-  </form>
+<div class="wrap section section--tight dashboard">
+  <header class="dashboard__header"><div class="profile-avatar" aria-hidden="true">{{ current_user.name[:1] | upper }}</div><div><h1>{{ current_user.name }}</h1><p>{{ current_user.email }} · Member since {{ current_user.created_at.strftime('%B %Y') }}</p></div></header>
+  <section class="dashboard-section"><div class="dashboard-section__head"><div><h2>My Listings</h2><p>Cars you have offered through the marketplace.</p></div><a class="btn btn--primary" href="{{ url_for('estimate') }}">Estimate a car to sell</a></div>{% if listings %}<div class="dashboard-table"><table><thead><tr><th>Car</th><th>Price</th><th>Listed</th><th>Status</th><th>Action</th></tr></thead><tbody>{% for listing in listings %}<tr><td>{{ listing.prediction.year }} {{ listing.prediction.brand }} {{ listing.prediction.model }}</td><td>NPR {{ '{:,.0f}'.format(listing.price) }}</td><td>{{ listing.created_at.strftime('%d %b %Y') }}</td><td><span class="status-badge status-badge--{{ listing.status|lower }}">{{ listing.status|title }}</span>{% if listing.status == 'SOLD' %}<small>Buyer: {{ listing.buyer.name }}</small>{% endif %}</td><td><a href="{{ url_for('listing_detail', listing_id=listing.id) }}">View</a>{% if listing.status == 'ACTIVE' %}<form class="inline-form" method="post" action="{{ url_for('remove_listing', listing_id=listing.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Remove</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">No marketplace listings yet. Start with a saved estimate.</p>{% endif %}</section>
+  <section class="dashboard-section"><div class="dashboard-section__head"><div><h2>My Purchases</h2><p>Your eSewa marketplace orders and payment status.</p></div><a href="{{ url_for('marketplace') }}">Browse marketplace</a></div>{% if purchases %}<div class="dashboard-table"><table><thead><tr><th>Car</th><th>Seller</th><th>Amount</th><th>Order</th><th>Payment</th><th>Date</th></tr></thead><tbody>{% for order in purchases %}<tr><td>{{ order.listing.prediction.year }} {{ order.listing.prediction.brand }} {{ order.listing.prediction.model }}</td><td>{{ order.listing.seller.name }}</td><td>NPR {{ '{:,.0f}'.format(order.amount) }}</td><td>#{{ order.id }}</td><td><span class="status-badge status-badge--{{ order.status|lower }}">{{ order.status|replace('_', ' ')|title }}</span>{% if order.payment.provider_transaction_code %}<small>{{ order.payment.provider_transaction_code }}</small>{% endif %}{% if order.status == 'PENDING_PAYMENT' %}<a href="{{ url_for('esewa_status', order_id=order.id) }}">Check payment</a>{% endif %}</td><td>{{ (order.paid_at or order.created_at).strftime('%d %b %Y') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">You have no marketplace purchases yet.</p>{% endif %}</section>
+  <section class="dashboard-section"><div class="dashboard-section__head"><div><h2>Estimate History</h2><p>{{ estimates|length }} saved estimate{{ '' if estimates|length == 1 else 's' }}</p></div><a class="btn btn--ghost" href="{{ url_for('estimate') }}">New estimate</a></div>{% if estimates %}<div class="estimate-history">{% for estimate in estimates %}<article class="estimate-history__item"><div><h3>{{ estimate.year }} {{ estimate.brand }} {{ estimate.model }}</h3><p>{{ estimate.transmission }} · {{ estimate.fuel }} · {{ '{:,.0f}'.format(estimate.km_driven or 0) }} km</p></div><div><strong>NPR {{ '{:,.0f}'.format(estimate.predicted_price) }}</strong><small>{{ estimate.created_at.strftime('%d %b %Y') }}</small></div><div>{% if estimate.listing %}<a href="{{ url_for('listing_detail', listing_id=estimate.listing.id) }}">View listing</a>{% else %}<a class="btn btn--primary" href="{{ url_for('sell_prediction', prediction_id=estimate.id) }}">Sell this car</a>{% endif %}</div></article>{% endfor %}</div>{% else %}<p class="empty-state">You have not saved any estimates.</p>{% endif %}</section>
+  <form class="profile-actions" action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn--ghost" type="submit">Log out</button></form>
 </div>
 {% endblock %}

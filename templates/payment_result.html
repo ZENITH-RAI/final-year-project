@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Payment Status — Car Resell Price Prediction and Recommendation System{% endblock %}
+
+{% block extra_css %}
+<style>
+  .payment-result { max-width: 760px; margin: 0 auto; }
+  .payment-result__card { background: #fff; border: 1px solid var(--clr-border); border-radius: 14px; padding: 2rem; }
+  .payment-result__icon { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 1.6rem; font-weight: 800; margin-bottom: 1rem; }
+  .payment-result__icon--success { background: #dcfce7; color: #166534; }
+  .payment-result__icon--pending { background: #fef3c7; color: #92400e; }
+  .payment-result__icon--failed { background: #fee2e2; color: #991b1b; }
+  .payment-summary { background: #f8fafc; border-radius: 10px; padding: 1rem 1.1rem; margin: 1.2rem 0; }
+  .payment-summary p { margin: .45rem 0; display: flex; justify-content: space-between; gap: 1rem; }
+  .payment-summary span { color: var(--clr-text-light); }
+  .payment-actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="wrap section payment-result">
+  <article class="payment-result__card">
+    {% if successful %}
+      <div class="payment-result__icon payment-result__icon--success">✓</div>
+      <h1>Payment successful</h1>
+      <p>Your eSewa payment was verified and the vehicle has been marked as sold.</p>
+    {% elif pending %}
+      <div class="payment-result__icon payment-result__icon--pending">…</div>
+      <h1>Payment pending</h1>
+      <p>eSewa has not confirmed a final result yet. The vehicle remains reserved while you check the transaction.</p>
+    {% else %}
+      <div class="payment-result__icon payment-result__icon--failed">×</div>
+      <h1>Payment not completed</h1>
+      <p>No verified purchase was recorded.</p>
+    {% endif %}
+
+    {% if order %}
+    <div class="payment-summary">
+      <p><span>Order</span><strong>#{{ order.id }}</strong></p>
+      <p><span>Vehicle</span><strong>{{ order.listing.prediction.year }} {{ order.listing.prediction.brand }} {{ order.listing.prediction.model }}</strong></p>
+      <p><span>Amount</span><strong>NPR {{ '{:,.2f}'.format(order.amount) }}</strong></p>
+      <p><span>Order status</span><strong>{{ order.status|replace('_', ' ')|title }}</strong></p>
+      {% if order.payment %}<p><span>eSewa status</span><strong>{{ order.payment.status|replace('_', ' ')|title }}</strong></p>{% endif %}
+      {% if order.payment and order.payment.provider_transaction_code %}<p><span>eSewa reference</span><strong>{{ order.payment.provider_transaction_code }}</strong></p>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="payment-actions">
+      {% if pending and order %}
+        <a class="btn btn--primary" href="{{ url_for('esewa_status', order_id=order.id) }}">Check payment status</a>
+      {% endif %}
+      {% if order %}<a class="btn btn--ghost" href="{{ url_for('listing_detail', listing_id=order.listing_id) }}">View vehicle</a>{% endif %}
+      <a class="btn btn--ghost" href="{{ url_for('profile') if current_user.is_authenticated else url_for('marketplace') }}">{{ 'My account' if current_user.is_authenticated else 'Marketplace' }}</a>
+    </div>
+  </article>
+</section>
+{% endblock %}
